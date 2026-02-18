@@ -812,3 +812,199 @@ body {
   opacity: .5;
   cursor: not-allowed;
 }
+
+@media (max-width: 768px) {
+
+  /* ── Layout: stack sidebar ke atas ── */
+  .app-layout {
+    flex-direction: column;
+  }
+
+  /* ── Sidebar jadi horizontal scroll di atas ── */
+  .sidebar {
+    width: 100% !important;
+    min-height: unset !important;
+    max-height: unset !important;
+    position: static !important;
+    align-self: auto !important;
+    flex-direction: column !important;
+    padding: 16px !important;
+    overflow-y: visible !important;
+    overflow-x: hidden !important;
+    border-right: none !important;
+    border-bottom: 3px solid var(--gold-mid) !important;
+  }
+
+  /* Sidebar tertutup di HP tetap full width */
+  .sidebar-closed {
+    width: 100% !important;
+    min-width: 100% !important;
+    padding: 12px 16px !important;
+  }
+
+  /* Sembunyikan tombol open sidebar fixed di HP */
+  .sidebar-open-btn {
+    display: none !important;
+  }
+
+  /* ── Main content ── */
+  .main-content {
+    padding: 14px !important;
+    padding-left: 14px !important;
+  }
+
+  .main-content.sidebar-hidden {
+    padding-left: 14px !important;
+  }
+
+  /* ── Header ── */
+  .dashboard-header {
+    flex-direction: column !important;
+    text-align: center !important;
+    padding: 20px 16px !important;
+    gap: 12px !important;
+  }
+
+  .header-logo {
+    width: 70px !important;
+    height: 70px !important;
+    font-size: 48px !important;
+  }
+
+  .header-text h1 {
+    font-size: 15px !important;
+  }
+
+  .header-text p {
+    font-size: 12px !important;
+  }
+
+  /* ── Metrics grid: 2 kolom di HP ── */
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .metric-card {
+    padding: 14px 12px !important;
+  }
+
+  .metric-value {
+    font-size: 16px !important;
+  }
+
+  .metric-value-small {
+    font-size: 11px !important;
+  }
+
+  /* ── Gauge grid: 1 kolom ── */
+  .gauge-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* ── Two column: 1 kolom ── */
+  .two-col {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* ── Table toolbar ── */
+  .table-toolbar {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+
+  .table-search {
+    width: 100% !important;
+  }
+
+  .filter-group {
+    width: 100% !important;
+  }
+
+  /* ── Table pagination ── */
+  .table-pagination {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+
+  /* ── Realtime bar ── */
+  .realtime-bar {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+
+  .realtime-right {
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+
+  /* ── Section title ── */
+  .section-title {
+    font-size: 14px !important;
+    padding: 10px 14px !important;
+  }
+
+  /* ── Col grid sidebar ── */
+  .col-grid {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+
+  /* ── Mode toggle tetap 2 kolom ── */
+  .mode-toggle {
+    display: flex !important;
+    gap: 6px !important;
+  }
+
+  /* ── Footer ── */
+  .dashboard-footer {
+    padding: 24px 16px !important;
+    border-radius: 0 !important;
+    margin-top: 32px !important;
+  }
+
+  .dashboard-footer strong {
+    font-size: 14px !important;
+  }
+
+  .dashboard-footer p {
+    font-size: 12px !important;
+  }
+
+  /* ── Chart container ── */
+  .chart-container {
+    padding: 14px 10px 10px !important;
+  }
+
+  .chart-title {
+    font-size: 14px !important;
+  }
+
+  /* ── Table scroll horizontal ── */
+  .table-scroll {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .lra-table td,
+  .lra-table th {
+    padding: 8px 8px !important;
+    font-size: 11px !important;
+  }
+}
+
+/* HP kecil (max 480px): metrics 1 kolom */
+@media (max-width: 480px) {
+  .metrics-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .header-text h1 {
+    font-size: 13px !important;
+  }
+}
