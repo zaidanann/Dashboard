@@ -204,7 +204,6 @@ interface AIParseResult {
   }>
 }
 
-// ── Format nilai cents → tampilan Rupiah ──────────────────────────
 function formatRupiahInput(value: string) {
   if (!value) return ""
   const num = parseFloat(value) / 100
@@ -212,7 +211,6 @@ function formatRupiahInput(value: string) {
   return new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num)
 }
 
-// ── RupiahInput: komponen input yang bisa diketik bebas ───────────
 function RupiahInput({
   value,
   onChange,
@@ -225,7 +223,6 @@ function RupiahInput({
   const [raw, setRaw] = useState("")
   const [focused, setFocused] = useState(false)
 
-  // Saat tidak fokus: tampilkan format Rupiah; saat fokus: tampilkan angka mentah
   const displayValue = focused
     ? raw
     : value && value !== "0"
@@ -233,14 +230,12 @@ function RupiahInput({
     : ""
 
   const handleFocus = () => {
-    // Ubah nilai tersimpan (cents) ke angka biasa untuk diedit
     const num = value ? Number(value) / 100 : 0
     setRaw(num > 0 ? num.toFixed(2) : "")
     setFocused(true)
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Hanya izinkan angka, titik, koma
     setRaw(e.target.value.replace(/[^\d.,]/g, ""))
   }
 
@@ -248,15 +243,12 @@ function RupiahInput({
     setFocused(false)
     if (!raw.trim()) { onChange(""); return }
 
-    // Normalisasi pemisah desimal (koma atau titik)
     let cleaned = raw.replace(/[^\d.,]/g, "")
     const lastComma = cleaned.lastIndexOf(",")
     const lastDot = cleaned.lastIndexOf(".")
     if (lastComma > lastDot) {
-      // format Indonesia: 1.234.567,89
       cleaned = cleaned.replace(/\./g, "").replace(",", ".")
     } else {
-      // format internasional: 1,234,567.89
       cleaned = cleaned.replace(/,/g, "")
     }
 
@@ -586,7 +578,6 @@ export default function FormLRAPage() {
     if (name === "provinsi") setFormData(prev => ({ ...prev, [name]: value, kabupatenKota: "" }))
   }
 
-  // ── DIPERBARUI: langsung simpan nilai dari RupiahInput (sudah dalam format cents) ──
   const handleAnggaranChange = (kode: string, field: "anggaran" | "realisasi", value: string) => {
     setAnggaranData(prev => ({ ...prev, [kode]: { ...prev[kode], [field]: value } }))
   }
@@ -627,7 +618,7 @@ export default function FormLRAPage() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return
     const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
-if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung"); return }
+    if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung"); return }
     setUploadedFile(file); setIsProcessingFile(true); setMessage("🔄 Memproses file...")
     try {
       if (ext === 'csv') {
@@ -719,7 +710,76 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
     finally { setLoading(false) }
   }
 
-  // ── Render baris tabel: pakai RupiahInput bukan <input> biasa ────
+  // Mobile card view for LRA table rows
+  function renderItemRowMobile(item: LRAItem) {
+    const d = anggaranData[item.kode] || { anggaran:"", realisasi:"" }
+    const hasSubItems = !!item.subItems?.length
+    const isExpanded = expandedItems[item.kode]
+
+    if (hasSubItems) {
+      const subTotal = calcItemSubTotal(item)!
+      return (
+        <React.Fragment key={item.kode}>
+          <div className="mobile-lra-card mobile-lra-card--parent">
+            <div className="mobile-lra-card__header" onClick={() => toggleExpand(item.kode)}>
+              <div className="mobile-lra-card__kode">{item.kode}</div>
+              <div className="mobile-lra-card__uraian">{item.uraian} <span className="mobile-lra-subcount">({item.subItems!.length} rincian)</span></div>
+              <div className="mobile-lra-card__toggle">{isExpanded?"▼":"▶"}</div>
+            </div>
+            <div className="mobile-lra-card__totals">
+              <span className="mobile-lra-label">Anggaran:</span>
+              <span className="mobile-lra-val">{subTotal.a>0?`Rp ${formatRupiahInput(String(subTotal.a))}`:"—"}</span>
+              <span className="mobile-lra-label">Realisasi:</span>
+              <span className="mobile-lra-val">{subTotal.r>0?`Rp ${formatRupiahInput(String(subTotal.r))}`:"—"}</span>
+              <span className="mobile-lra-label">%:</span>
+              <span className="mobile-lra-val" style={{color:"#f57c00",fontWeight:700}}>{subTotal.pct}%</span>
+            </div>
+          </div>
+          {isExpanded && item.subItems!.map(sub => {
+            const sd = anggaranData[sub.kode] || { anggaran:"", realisasi:"" }
+            const sPct = Number(sd.anggaran||0)>0?((Number(sd.realisasi||0)/Number(sd.anggaran||0))*100).toFixed(2):"0"
+            return (
+              <div key={sub.kode} className="mobile-lra-card mobile-lra-card--sub">
+                <div className="mobile-lra-card__kode mobile-lra-card__kode--sub">{sub.kode}</div>
+                <div className="mobile-lra-card__uraian">↳ {sub.uraian}</div>
+                <div className="mobile-lra-inputs">
+                  <div className="mobile-lra-input-group">
+                    <label className="mobile-lra-input-label">Anggaran (Rp)</label>
+                    <RupiahInput value={sd.anggaran} onChange={val => handleAnggaranChange(sub.kode, "anggaran", val)} />
+                  </div>
+                  <div className="mobile-lra-input-group">
+                    <label className="mobile-lra-input-label">Realisasi (Rp)</label>
+                    <RupiahInput value={sd.realisasi} onChange={val => handleAnggaranChange(sub.kode, "realisasi", val)} />
+                  </div>
+                  <div className="mobile-lra-pct" style={{color:Number(sPct)>100?"#d32f2f":"#2e7d32"}}>{sPct}%</div>
+                </div>
+              </div>
+            )
+          })}
+        </React.Fragment>
+      )
+    }
+
+    const pct = Number(d.anggaran||0)>0?((Number(d.realisasi||0)/Number(d.anggaran||0))*100).toFixed(2):"0"
+    return (
+      <div key={item.kode} className="mobile-lra-card">
+        <div className="mobile-lra-card__kode">{item.kode}</div>
+        <div className="mobile-lra-card__uraian">{item.uraian}</div>
+        <div className="mobile-lra-inputs">
+          <div className="mobile-lra-input-group">
+            <label className="mobile-lra-input-label">Anggaran (Rp)</label>
+            <RupiahInput value={d.anggaran} onChange={val => handleAnggaranChange(item.kode, "anggaran", val)} />
+          </div>
+          <div className="mobile-lra-input-group">
+            <label className="mobile-lra-input-label">Realisasi (Rp)</label>
+            <RupiahInput value={d.realisasi} onChange={val => handleAnggaranChange(item.kode, "realisasi", val)} />
+          </div>
+          <div className="mobile-lra-pct" style={{color:Number(pct)>100?"#d32f2f":"#2e7d32"}}>{pct}%</div>
+        </div>
+      </div>
+    )
+  }
+
   function renderItemRow(item: LRAItem) {
     const d = anggaranData[item.kode] || { anggaran:"", realisasi:"" }
     const hasSubItems = !!item.subItems?.length
@@ -756,17 +816,10 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
                 <td style={{ padding:"6px 8px 6px 28px", border:"1px solid #ddd", fontFamily:"monospace", fontSize:12, color:"#555" }}>{sub.kode}</td>
                 <td style={{ padding:6, border:"1px solid #ddd", fontSize:13, color:"#444", paddingLeft:16 }}>↳ {sub.uraian}</td>
                 <td style={{ padding:4, border:"1px solid #ddd" }}>
-                  {/* ✅ RupiahInput — bisa ketik bebas */}
-                  <RupiahInput
-                    value={sd.anggaran}
-                    onChange={val => handleAnggaranChange(sub.kode, "anggaran", val)}
-                  />
+                  <RupiahInput value={sd.anggaran} onChange={val => handleAnggaranChange(sub.kode, "anggaran", val)} />
                 </td>
                 <td style={{ padding:4, border:"1px solid #ddd" }}>
-                  <RupiahInput
-                    value={sd.realisasi}
-                    onChange={val => handleAnggaranChange(sub.kode, "realisasi", val)}
-                  />
+                  <RupiahInput value={sd.realisasi} onChange={val => handleAnggaranChange(sub.kode, "realisasi", val)} />
                 </td>
                 <td style={{ padding:8, border:"1px solid #ddd", textAlign:"center", fontWeight:600, color:Number(sPct)>100?"#d32f2f":"#2e7d32", fontSize:13 }}>{sPct}%</td>
               </tr>
@@ -782,17 +835,10 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
         <td style={{ padding:8, border:"1px solid #ddd", fontFamily:"monospace", fontSize:13 }}>{item.kode}</td>
         <td style={{ padding:8, border:"1px solid #ddd" }}>{item.uraian}</td>
         <td style={{ padding:4, border:"1px solid #ddd" }}>
-          {/* ✅ RupiahInput — bisa ketik bebas */}
-          <RupiahInput
-            value={d.anggaran}
-            onChange={val => handleAnggaranChange(item.kode, "anggaran", val)}
-          />
+          <RupiahInput value={d.anggaran} onChange={val => handleAnggaranChange(item.kode, "anggaran", val)} />
         </td>
         <td style={{ padding:4, border:"1px solid #ddd" }}>
-          <RupiahInput
-            value={d.realisasi}
-            onChange={val => handleAnggaranChange(item.kode, "realisasi", val)}
-          />
+          <RupiahInput value={d.realisasi} onChange={val => handleAnggaranChange(item.kode, "realisasi", val)} />
         </td>
         <td style={{ padding:8, border:"1px solid #ddd", textAlign:"center", fontWeight:600, color:Number(pct)>100?"#d32f2f":"#2e7d32" }}>{pct}%</td>
       </tr>
@@ -802,6 +848,7 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
   return (
     <div className="main-content" style={{ padding:'24px' }}>
       <style>{`
+        /* ─── EXISTING DESKTOP STYLES (unchanged) ─── */
         .info-card { transition: transform 0.2s, box-shadow 0.2s; }
         .info-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(15,37,88,0.15) !important; }
         .info-icon-box { width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; background:linear-gradient(135deg,#0f2558,#1a3a7c); box-shadow:0 4px 12px rgba(15,37,88,0.2); }
@@ -868,6 +915,175 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
         .ai-how-title { color:#94a3b8; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
         .ai-step { display:flex; align-items:flex-start; gap:10px; margin-bottom:6px; font-size:12px; color:#7c6aa6; }
         .ai-step-num { background:rgba(124,58,237,0.3); color:#c4b5fd; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11px; flex-shrink:0; }
+
+        /* ─── DESKTOP TABLE (shown on ≥768px) ─── */
+        .lra-table-desktop { display: table; width: 100%; }
+        .lra-cards-mobile { display: none; }
+
+        /* ─── MOBILE CARD STYLES ─── */
+        .mobile-lra-card {
+          background: #fff;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          padding: 12px;
+          margin-bottom: 8px;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+        .mobile-lra-card--parent {
+          background: #f0f7ff;
+          border-color: #bfdbfe;
+        }
+        .mobile-lra-card--sub {
+          background: #fafcff;
+          border-color: #dbeafe;
+          margin-left: 12px;
+        }
+        .mobile-lra-card__header {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          cursor: pointer;
+        }
+        .mobile-lra-card__kode {
+          font-family: monospace;
+          font-size: 11px;
+          color: #64748b;
+          white-space: nowrap;
+          flex-shrink: 0;
+          background: #f1f5f9;
+          padding: 2px 6px;
+          border-radius: 4px;
+        }
+        .mobile-lra-card__kode--sub {
+          font-size: 10px;
+        }
+        .mobile-lra-card__uraian {
+          font-size: 13px;
+          color: #1e293b;
+          font-weight: 500;
+          flex: 1;
+          line-height: 1.4;
+        }
+        .mobile-lra-card__toggle {
+          color: #1565c0;
+          font-size: 12px;
+          flex-shrink: 0;
+          padding-top: 2px;
+        }
+        .mobile-lra-card__totals {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 2px 8px;
+          margin-top: 8px;
+          padding-top: 8px;
+          border-top: 1px solid #e2e8f0;
+          font-size: 12px;
+        }
+        .mobile-lra-label {
+          color: #64748b;
+          font-weight: 600;
+          white-space: nowrap;
+          align-self: center;
+        }
+        .mobile-lra-val {
+          font-family: monospace;
+          color: #1565c0;
+          font-weight: 700;
+          text-align: right;
+        }
+        .mobile-lra-inputs {
+          margin-top: 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .mobile-lra-input-group {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .mobile-lra-input-label {
+          font-size: 11px;
+          font-weight: 700;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .mobile-lra-pct {
+          font-size: 14px;
+          font-weight: 800;
+          text-align: right;
+          padding-top: 4px;
+        }
+        .mobile-lra-subtotal {
+          background: #fff9c4;
+          border: 1px solid #f59e0b;
+          border-radius: 6px;
+          padding: 10px 12px;
+          margin-bottom: 8px;
+          font-size: 13px;
+        }
+        .mobile-lra-subtotal__title {
+          font-weight: 700;
+          color: #92400e;
+          margin-bottom: 6px;
+        }
+        .mobile-lra-subtotal__grid {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 2px 8px;
+          font-size: 12px;
+        }
+        .mobile-subcount { font-size: 11px; color: #888; }
+
+        /* ─── RESPONSIVE BREAKPOINTS ─── */
+        @media (max-width: 767px) {
+          .main-content { padding: 12px !important; }
+
+          /* Header */
+          header { flex-direction: column; align-items: flex-start !important; gap: 10px !important; }
+          header img { width: 48px !important; height: 48px !important; }
+          header h1 { font-size: 15px !important; }
+          header p { font-size: 12px !important; }
+
+          /* AI panel */
+          .ai-panel { padding: 16px !important; }
+          .ai-title { font-size: 16px !important; flex-wrap: wrap; }
+          .ai-upload-zone { padding: 20px 12px !important; }
+          .ai-upload-icon { font-size: 36px !important; }
+
+          /* Info daerah grid: 1 column on mobile */
+          .info-grid-2col { grid-template-columns: 1fr !important; }
+
+          /* Grand total grid: 2 columns on mobile */
+          .grand-total-grid { grid-template-columns: 1fr 1fr !important; }
+
+          /* Submit buttons: stack on mobile */
+          .submit-btns { flex-direction: column !important; }
+          .submit-btns button { width: 100%; }
+
+          /* Show mobile cards, hide desktop table */
+          .lra-table-desktop { display: none !important; }
+          .lra-cards-mobile { display: block !important; }
+
+          /* Section header flex: stack on mobile */
+          .section-header-row { flex-direction: column !important; align-items: stretch !important; gap: 8px !important; }
+          .section-header-row h4 { margin-right: 0 !important; }
+
+          /* Kat total row: stack on mobile */
+          .kat-total-row { flex-direction: column !important; gap: 8px !important; }
+          .kat-total-values { flex-direction: column !important; gap: 6px !important; font-size: 13px !important; }
+
+          /* Search results: hide province on very small screens */
+          .srch-prov { display: none; }
+          .srch-item { padding: 8px 10px !important; }
+        }
+
+        @media (max-width: 480px) {
+          .ai-title { font-size: 14px !important; }
+          .ai-subtitle { font-size: 12px !important; }
+          .grand-total-grid { grid-template-columns: 1fr !important; }
+        }
       `}</style>
 
       {/* HEADER */}
@@ -894,7 +1110,7 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
             <p className="ai-subtitle">Upload file LRA (PDF atau Excel), Groq AI akan membaca dan mengisi form secara otomatis</p>
 
             <div style={{ marginBottom:16 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8, flexWrap:'wrap' }}>
                 <span style={{ color:'#a78bfa', fontSize:12, fontWeight:600 }}>🔑 Groq API Key</span>
                 <button type="button" className="ai-btn ai-btn-secondary" style={{ padding:'4px 10px', fontSize:11 }}
                   onClick={() => setShowApiKeyInput(!showApiKeyInput)}>
@@ -902,7 +1118,7 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
                 </button>
                 <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer"
                   style={{ fontSize:11, color:'#818cf8', textDecoration:'underline' }}>
-                  Dapatkan API Key gratis di Groq ↗
+                  Dapatkan API Key gratis ↗
                 </a>
               </div>
               {showApiKeyInput && (
@@ -961,9 +1177,9 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
             )}
             {aiUploadedFile && !isAiProcessing && (
               <div className="ai-file-selected">
-                <span>📁 {aiUploadedFile.name}</span>
+                <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'80%' }}>📁 {aiUploadedFile.name}</span>
                 <button type="button" onClick={() => { setAiUploadedFile(null); setAiResult(null) }}
-                  style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:16 }}>×</button>
+                  style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:16, flexShrink:0 }}>×</button>
               </div>
             )}
             {aiResult && (
@@ -1002,7 +1218,7 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
               <div className="srch-box">
                 <span className="srch-ico">🔍</span>
                 <input type="text" className="srch-inp"
-                  placeholder="Ketik nama daerah... contoh: Bekasi, Medan, Sorong, Jayapura"
+                  placeholder="Ketik nama daerah..."
                   value={searchQuery} onChange={handleSearch} onKeyDown={handleSearchKey}
                   onFocus={() => { if (searchResults.length > 0) setShowDropdown(true) }}
                   autoComplete="off" />
@@ -1044,7 +1260,7 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
             </p>
           </div>
 
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:18, marginBottom:18 }}>
+          <div className="info-grid-2col" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:18, marginBottom:18 }}>
             <div className="info-card" style={{ background:'#fff', padding:18, borderRadius:12, border:'1px solid #e2e8f0', boxShadow:'0 2px 8px rgba(15,37,88,0.06)' }}>
               <div className="field-label">🗺️ Provinsi</div>
               <select name="provinsi" value={formData.provinsi} onChange={handleChange} required className="field-select">
@@ -1089,7 +1305,7 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
 
         {/* FILE UPLOAD (Manual) */}
         <div style={{ backgroundColor:"#e8f5e9", padding:15, borderRadius:8, marginBottom:20, border:"2px solid #4caf50" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, flexWrap:"wrap", gap:8 }}>
             <h3 style={{ margin:0, fontSize:16, color:"#2e7d32" }}>📁 Upload File Excel / CSV (Manual)</h3>
             {uploadedFile && (
               <button type="button" onClick={() => { setUploadedFile(null); setFilePreview("") }}
@@ -1097,17 +1313,17 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
             )}
           </div>
           <p style={{ margin:"0 0 10px 0", fontSize:13, color:"#666" }}><strong>📤 Upload file LRA</strong> format Excel (.xlsx, .xls) atau CSV — parsing berdasarkan kode rekening langsung.</p>
-          <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+          <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
             <label htmlFor="file-upload" style={{ padding:"10px 20px", backgroundColor:uploadedFile?"#ccc":"#4caf50", color:"white", borderRadius:6, cursor:uploadedFile?"not-allowed":"pointer", fontSize:14, fontWeight:600, display:"inline-block" }}>
               {uploadedFile ? "✅ File Terupload" : "📂 Pilih File"}
             </label>
             <input id="file-upload" type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload}
               disabled={isProcessingFile||!!uploadedFile} style={{ display:"none" }} />
-            {uploadedFile && <span style={{ fontSize:13, color:"#2e7d32", fontWeight:500 }}>📄 {uploadedFile.name}</span>}
+            {uploadedFile && <span style={{ fontSize:13, color:"#2e7d32", fontWeight:500, wordBreak:"break-all" }}>📄 {uploadedFile.name}</span>}
           </div>
           {isProcessingFile && <div style={{ marginTop:10, padding:10, backgroundColor:"#fff3e0", borderRadius:4, fontSize:13, color:"#e65100" }}>⏳ Memproses...</div>}
           {filePreview && (
-            <div style={{ marginTop:10, padding:10, backgroundColor:"#f5f5f5", borderRadius:4, maxHeight:150, overflowY:"auto" }}>
+            <div style={{ marginTop:10, padding:10, backgroundColor:"#f5f5f5", borderRadius:4, maxHeight:150, overflowY:"auto", overflowX:"auto" }}>
               <pre style={{ fontSize:11, margin:0, fontFamily:"monospace", whiteSpace:"pre-wrap" }}>{filePreview}</pre>
             </div>
           )}
@@ -1115,7 +1331,7 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
 
         {/* PASTE MODE */}
         <div style={{ backgroundColor:"#fff3e0", padding:15, borderRadius:8, marginBottom:20 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, flexWrap:"wrap", gap:8 }}>
             <h3 style={{ margin:0, fontSize:16, color:"#e65100" }}>📋 Copy-Paste dari Excel</h3>
             <button type="button" onClick={() => setPasteMode(!pasteMode)}
               style={{ padding:"8px 15px", backgroundColor:pasteMode?"#d32f2f":"#ff9800", color:"white", border:"none", borderRadius:4, cursor:"pointer", fontSize:13, fontWeight:600 }}>
@@ -1148,7 +1364,7 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
                   const isPaste = activePasteSection === section.kode
                   return (
                     <div key={sIdx} style={{ marginBottom:20 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                      <div className="section-header-row" style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
                         <h4 style={{ backgroundColor:"#e3f2fd", padding:"10px 15px", borderRadius:4, margin:0, fontSize:14, color:"#1565c0", fontWeight:600, flex:1 }}>{section.kode}. {section.subKategori}</h4>
                         <button type="button" onClick={() => setActivePasteSection(isPaste?null:section.kode)}
                           style={{ marginLeft:10, padding:"6px 12px", backgroundColor:isPaste?"#d32f2f":"#2196f3", color:"white", border:"none", borderRadius:4, cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap" }}>
@@ -1168,7 +1384,9 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
                           </button>
                         </div>
                       )}
-                      <table style={{ width:"100%", borderCollapse:"collapse", marginBottom:10, fontSize:14 }}>
+
+                      {/* DESKTOP TABLE */}
+                      <table className="lra-table-desktop" style={{ width:"100%", borderCollapse:"collapse", marginBottom:10, fontSize:14 }}>
                         <thead>
                           <tr style={{ backgroundColor:"#f5f5f5" }}>
                             <th style={{ padding:10, textAlign:"left", border:"1px solid #ddd", width:"15%" }}>Kode</th>
@@ -1189,17 +1407,33 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
                           </tr>
                         </tbody>
                       </table>
+
+                      {/* MOBILE CARDS */}
+                      <div className="lra-cards-mobile">
+                        {section.items.map(item => renderItemRowMobile(item))}
+                        {/* Subtotal card */}
+                        <div className="mobile-lra-subtotal">
+                          <div className="mobile-lra-subtotal__title">Jumlah {section.subKategori}</div>
+                          <div className="mobile-lra-subtotal__grid">
+                            <span className="mobile-lra-label">Anggaran:</span>
+                            <span className="mobile-lra-val" style={{color:'#1565c0'}}>Rp {formatRupiahInput(String(st.a))}</span>
+                            <span className="mobile-lra-label">Realisasi:</span>
+                            <span className="mobile-lra-val" style={{color:'#2e7d32'}}>Rp {formatRupiahInput(String(st.r))}</span>
+                            <span className="mobile-lra-label">Persentase:</span>
+                            <span className="mobile-lra-val" style={{color:'#f57c00',fontWeight:700}}>{st.pct}%</span>
+                          </div>
+                        </div>
+                      </div>
+
                     </div>
                   )
                 })}
-                <div style={{ backgroundColor:"#f3e5f5", padding:"12px 15px", borderRadius:6, marginTop:15, marginBottom:10, border:"2px solid #9c27b0" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <div style={{ fontWeight:700, fontSize:14, color:"#6a1b9a" }}>TOTAL {kg.kode}. {kg.kategori}</div>
-                    <div style={{ display:"flex", gap:30, fontSize:14, fontFamily:"monospace" }}>
-                      <div><span style={{ color:"#666", marginRight:8 }}>Anggaran:</span><span style={{ fontWeight:700, color:"#1565c0" }}>Rp {formatRupiahInput(String(kt.a))}</span></div>
-                      <div><span style={{ color:"#666", marginRight:8 }}>Realisasi:</span><span style={{ fontWeight:700, color:"#2e7d32" }}>Rp {formatRupiahInput(String(kt.r))}</span></div>
-                      <div><span style={{ color:"#666", marginRight:8 }}>%:</span><span style={{ fontWeight:700, color:"#7b1fa2" }}>{kt.pct}%</span></div>
-                    </div>
+                <div className="kat-total-row" style={{ backgroundColor:"#f3e5f5", padding:"12px 15px", borderRadius:6, marginTop:15, marginBottom:10, border:"2px solid #9c27b0", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div style={{ fontWeight:700, fontSize:14, color:"#6a1b9a" }}>TOTAL {kg.kode}. {kg.kategori}</div>
+                  <div className="kat-total-values" style={{ display:"flex", gap:30, fontSize:14, fontFamily:"monospace" }}>
+                    <div><span style={{ color:"#666", marginRight:8 }}>Anggaran:</span><span style={{ fontWeight:700, color:"#1565c0" }}>Rp {formatRupiahInput(String(kt.a))}</span></div>
+                    <div><span style={{ color:"#666", marginRight:8 }}>Realisasi:</span><span style={{ fontWeight:700, color:"#2e7d32" }}>Rp {formatRupiahInput(String(kt.r))}</span></div>
+                    <div><span style={{ color:"#666", marginRight:8 }}>%:</span><span style={{ fontWeight:700, color:"#7b1fa2" }}>{kt.pct}%</span></div>
                   </div>
                 </div>
               </div>
@@ -1210,7 +1444,7 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
         {/* GRAND TOTAL */}
         <div style={{ backgroundColor:"#e8f5e9", padding:15, borderRadius:8, marginTop:20, marginBottom:20, border:"3px solid #2e7d32" }}>
           <h3 style={{ margin:"0 0 15px 0", fontSize:16, color:"#2e7d32" }}>📊 RINGKASAN TOTAL KESELURUHAN</h3>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:15 }}>
+          <div className="grand-total-grid" style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:15 }}>
             {([["Total Anggaran",formatRupiahInput(String(totals.a)),"#1565c0"],["Total Realisasi",formatRupiahInput(String(totals.r)),"#2e7d32"],["Sisa",formatRupiahInput(String(totals.sisa)),"#f57c00"],["Persentase",totals.pct+"%","#7b1fa2"]] as [string,string,string][]).map(([label,val,color]) => (
               <div key={label}>
                 <div style={{ fontSize:12, color:"#666", marginBottom:5 }}>{label}</div>
@@ -1226,7 +1460,7 @@ if (!['xlsx','xls','csv'].includes(ext)) { setMessage("❌ Format tidak didukung
           </div>
         )}
 
-        <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+        <div className="submit-btns" style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
           <button type="button" onClick={() => router.push('/')}
             style={{ backgroundColor:"#6c757d", padding:"12px 25px", color:"white", border:"none", borderRadius:6, cursor:"pointer", fontSize:14, fontWeight:600 }}>
             ← Kembali
