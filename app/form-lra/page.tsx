@@ -174,7 +174,7 @@ function collectAllCodes(): Record<string, AnggaranItem> {
   return d
 }
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz6Ak1uqFEusf25ctFkYoBdhLC9ojvZqOqrpfhBYpNXhXhMGeW7PzDzMfL9E_NT-iLH/exec"
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzhwV47fH5uRt_mHu11T5UCDNzHffZyOYwMDp5lEG3hdyuQsrYuj9EE7UoC92Y_mx5z/exec"
 
 const GROQ_API_KEY_DEFAULT = process.env.NEXT_PUBLIC_GROQ_API_KEY || ""
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
