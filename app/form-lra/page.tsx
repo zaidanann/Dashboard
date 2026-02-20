@@ -166,16 +166,21 @@ const LRA_STRUCTURE: LRAKategori[] = [
   ]},
 ]
 
+// ✅ UPDATED: collectAllCodes now includes parent items (4.2.01, 4.2.02, etc.)
 function collectAllCodes(): Record<string, AnggaranItem> {
   const d: Record<string, AnggaranItem> = {}
   LRA_STRUCTURE.forEach(kg => kg.sections.forEach(s => s.items.forEach(item => {
+    // Always register the parent item itself
     d[item.kode] = { kodeRekening: item.kode, uraian: item.uraian, anggaran: "", realisasi: "" }
-    item.subItems?.forEach(sub => { d[sub.kode] = { kodeRekening: sub.kode, uraian: sub.uraian, anggaran: "", realisasi: "" } })
+    // Also register sub-items
+    item.subItems?.forEach(sub => {
+      d[sub.kode] = { kodeRekening: sub.kode, uraian: sub.uraian, anggaran: "", realisasi: "" }
+    })
   })))
   return d
 }
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzhwV47fH5uRt_mHu11T5UCDNzHffZyOYwMDp5lEG3hdyuQsrYuj9EE7UoC92Y_mx5z/exec"
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxMsRPSuYXiqLpy6BaA2FSVrSejxphQYv4h8dvfUvPUta8JNd1l8ctXxP73pQQrTI4/exec"
 
 const GROQ_API_KEY_DEFAULT = process.env.NEXT_PUBLIC_GROQ_API_KEY || ""
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -185,6 +190,8 @@ function getAllValidCodes(): string {
   const codes: string[] = []
   LRA_STRUCTURE.forEach(kg => kg.sections.forEach(s => s.items.forEach(item => {
     if (item.subItems?.length) {
+      // Include parent code too
+      codes.push(`${item.kode} | ${item.uraian} (total)`)
       item.subItems.forEach(sub => codes.push(`${sub.kode} | ${sub.uraian}`))
     } else {
       codes.push(`${item.kode} | ${item.uraian}`)
@@ -683,8 +690,11 @@ export default function FormLRAPage() {
       const t = calcTotal()
       const allItems: AnggaranItem[] = []
       LRA_STRUCTURE.forEach(kg => kg.sections.forEach(s => s.items.forEach(item => {
-        if (item.subItems?.length) { item.subItems.forEach(sub => { const d=anggaranData[sub.kode]; if(d) allItems.push(d) }) }
-        else { const d=anggaranData[item.kode]; if(d) allItems.push(d) }
+        // Include parent item
+        const pd = anggaranData[item.kode]; if(pd) allItems.push(pd)
+        if (item.subItems?.length) {
+          item.subItems.forEach(sub => { const d=anggaranData[sub.kode]; if(d) allItems.push(d) })
+        }
       })))
       const payload = {
         action:"submitData", targetSheet:formData.targetSheet,
@@ -711,7 +721,9 @@ export default function FormLRAPage() {
     finally { setLoading(false) }
   }
 
-  // Mobile card view for LRA table rows
+  // ============================================================
+  // ✅ UPDATED: renderItemRowMobile — parent item now has inputs
+  // ============================================================
   function renderItemRowMobile(item: LRAItem) {
     const d = anggaranData[item.kode] || { anggaran:"", realisasi:"" }
     const hasSubItems = !!item.subItems?.length
@@ -719,26 +731,77 @@ export default function FormLRAPage() {
 
     if (hasSubItems) {
       const subTotal = calcItemSubTotal(item)!
+      const parentPct = Number(d.anggaran||0) > 0
+        ? ((Number(d.realisasi||0) / Number(d.anggaran||0)) * 100).toFixed(2)
+        : subTotal.pct
+
       return (
         <React.Fragment key={item.kode}>
           <div className="mobile-lra-card mobile-lra-card--parent">
+            {/* Header row — click to expand/collapse */}
             <div className="mobile-lra-card__header" onClick={() => toggleExpand(item.kode)}>
               <div className="mobile-lra-card__kode">{item.kode}</div>
-              <div className="mobile-lra-card__uraian">{item.uraian} <span className="mobile-lra-subcount">({item.subItems!.length} rincian)</span></div>
-              <div className="mobile-lra-card__toggle">{isExpanded?"▼":"▶"}</div>
+              <div className="mobile-lra-card__uraian">
+                {item.uraian}
+                <span className="mobile-lra-subcount"> ({item.subItems!.length} rincian)</span>
+              </div>
+              <div className="mobile-lra-card__toggle">{isExpanded ? "▼" : "▶"}</div>
             </div>
-            <div className="mobile-lra-card__totals">
-              <span className="mobile-lra-label">Anggaran:</span>
-              <span className="mobile-lra-val">{subTotal.a>0?`Rp ${formatRupiahInput(String(subTotal.a))}`:"—"}</span>
-              <span className="mobile-lra-label">Realisasi:</span>
-              <span className="mobile-lra-val">{subTotal.r>0?`Rp ${formatRupiahInput(String(subTotal.r))}`:"—"}</span>
-              <span className="mobile-lra-label">%:</span>
-              <span className="mobile-lra-val" style={{color:"#f57c00",fontWeight:700}}>{subTotal.pct}%</span>
+
+            {/* ✅ Direct input for parent item (4.2.01, 4.2.02, etc.) */}
+            <div style={{
+              marginTop: 10,
+              borderTop: "1px solid #bfdbfe",
+              paddingTop: 10,
+            }}>
+              <div style={{
+                fontSize: 11,
+                color: "#1565c0",
+                fontWeight: 700,
+                marginBottom: 8,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}>
+                <span style={{
+                  background: "#1565c0",
+                  color: "#fff",
+                  borderRadius: 4,
+                  padding: "1px 6px",
+                  fontSize: 10,
+                }}>TOTAL</span>
+                Input Langsung {item.kode}
+              </div>
+              <div className="mobile-lra-inputs">
+                <div className="mobile-lra-input-group">
+                  <label className="mobile-lra-input-label">Anggaran Total (Rp)</label>
+                  <RupiahInput
+                    value={d.anggaran}
+                    onChange={val => handleAnggaranChange(item.kode, "anggaran", val)}
+                  />
+                </div>
+                <div className="mobile-lra-input-group">
+                  <label className="mobile-lra-input-label">Realisasi Total (Rp)</label>
+                  <RupiahInput
+                    value={d.realisasi}
+                    onChange={val => handleAnggaranChange(item.kode, "realisasi", val)}
+                  />
+                </div>
+                <div className="mobile-lra-pct" style={{
+                  color: Number(parentPct) > 100 ? "#d32f2f" : Number(d.anggaran||0) > 0 ? "#2e7d32" : "#f57c00"
+                }}>
+                  {parentPct}%
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* Sub-items */}
           {isExpanded && item.subItems!.map(sub => {
             const sd = anggaranData[sub.kode] || { anggaran:"", realisasi:"" }
-            const sPct = Number(sd.anggaran||0)>0?((Number(sd.realisasi||0)/Number(sd.anggaran||0))*100).toFixed(2):"0"
+            const sPct = Number(sd.anggaran||0)>0
+              ? ((Number(sd.realisasi||0)/Number(sd.anggaran||0))*100).toFixed(2)
+              : "0"
             return (
               <div key={sub.kode} className="mobile-lra-card mobile-lra-card--sub">
                 <div className="mobile-lra-card__kode mobile-lra-card__kode--sub">{sub.kode}</div>
@@ -781,6 +844,9 @@ export default function FormLRAPage() {
     )
   }
 
+  // ============================================================
+  // ✅ UPDATED: renderItemRow (desktop) — parent item now has inputs
+  // ============================================================
   function renderItemRow(item: LRAItem) {
     const d = anggaranData[item.kode] || { anggaran:"", realisasi:"" }
     const hasSubItems = !!item.subItems?.length
@@ -788,41 +854,91 @@ export default function FormLRAPage() {
 
     if (hasSubItems) {
       const subTotal = calcItemSubTotal(item)!
+      const parentPct = Number(d.anggaran||0) > 0
+        ? ((Number(d.realisasi||0) / Number(d.anggaran||0)) * 100).toFixed(2)
+        : subTotal.pct
+      const pctColor = Number(parentPct) > 100 ? "#d32f2f" : Number(d.anggaran||0) > 0 ? "#2e7d32" : "#f57c00"
+
       return (
         <React.Fragment key={item.kode}>
-          <tr style={{ backgroundColor:"#f0f7ff" }}>
-            <td style={{ padding:8, border:"1px solid #ddd", fontFamily:"monospace", fontSize:13 }}>
-              <button type="button" onClick={() => toggleExpand(item.kode)}
-                style={{ background:"none", border:"none", cursor:"pointer", fontSize:13, padding:0, marginRight:4, color:"#1565c0" }}>
-                {isExpanded?"▼":"▶"}
+          <tr style={{ backgroundColor: "#e8f1fb" }}>
+            {/* Kode + expand toggle */}
+            <td style={{ padding: 8, border: "1px solid #ddd", fontFamily: "monospace", fontSize: 13, verticalAlign: "middle" }}>
+              <button
+                type="button"
+                onClick={() => toggleExpand(item.kode)}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: 0, marginRight: 4, color: "#1565c0" }}
+              >
+                {isExpanded ? "▼" : "▶"}
               </button>
               {item.kode}
             </td>
-            <td style={{ padding:8, border:"1px solid #ddd", fontWeight:600, color:"#1565c0" }}>
-              {item.uraian}<span style={{ fontSize:11, color:"#888", marginLeft:8 }}>({item.subItems!.length} rincian)</span>
+
+            {/* Uraian */}
+            <td style={{ padding: 8, border: "1px solid #ddd", verticalAlign: "middle" }}>
+              <div style={{ fontWeight: 600, color: "#1565c0" }}>{item.uraian}</div>
+              <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
+                {item.subItems!.length} rincian — isi total langsung di bawah ini:
+              </div>
             </td>
-            <td style={{ padding:8, border:"1px solid #ddd", textAlign:"right", fontFamily:"monospace", fontWeight:600, color:"#1565c0" }}>
-              {subTotal.a>0?formatRupiahInput(String(subTotal.a)):"—"}
+
+            {/* ✅ Anggaran input for parent */}
+            <td style={{ padding: 4, border: "1px solid #ddd", verticalAlign: "middle" }}>
+              <RupiahInput
+                value={d.anggaran}
+                onChange={val => handleAnggaranChange(item.kode, "anggaran", val)}
+                placeholder="Total anggaran"
+              />
+              {subTotal.a > 0 && (
+                <div style={{ fontSize: 10, color: "#999", textAlign: "right", marginTop: 2 }}>
+                  Sub-total: {formatRupiahInput(String(subTotal.a))}
+                </div>
+              )}
             </td>
-            <td style={{ padding:8, border:"1px solid #ddd", textAlign:"right", fontFamily:"monospace", fontWeight:600, color:"#1565c0" }}>
-              {subTotal.r>0?formatRupiahInput(String(subTotal.r)):"—"}
+
+            {/* ✅ Realisasi input for parent */}
+            <td style={{ padding: 4, border: "1px solid #ddd", verticalAlign: "middle" }}>
+              <RupiahInput
+                value={d.realisasi}
+                onChange={val => handleAnggaranChange(item.kode, "realisasi", val)}
+                placeholder="Total realisasi"
+              />
+              {subTotal.r > 0 && (
+                <div style={{ fontSize: 10, color: "#999", textAlign: "right", marginTop: 2 }}>
+                  Sub-total: {formatRupiahInput(String(subTotal.r))}
+                </div>
+              )}
             </td>
-            <td style={{ padding:8, border:"1px solid #ddd", textAlign:"center", fontWeight:600, color:"#f57c00" }}>{subTotal.pct}%</td>
+
+            {/* % */}
+            <td style={{ padding: 8, border: "1px solid #ddd", textAlign: "center", fontWeight: 600, color: pctColor }}>
+              {parentPct}%
+            </td>
           </tr>
+
+          {/* Sub-items (expanded) */}
           {isExpanded && item.subItems!.map(sub => {
-            const sd = anggaranData[sub.kode] || { anggaran:"", realisasi:"" }
-            const sPct = Number(sd.anggaran||0)>0?((Number(sd.realisasi||0)/Number(sd.anggaran||0))*100).toFixed(2):"0"
+            const sd = anggaranData[sub.kode] || { anggaran: "", realisasi: "" }
+            const sPct = Number(sd.anggaran||0) > 0
+              ? ((Number(sd.realisasi||0) / Number(sd.anggaran||0)) * 100).toFixed(2)
+              : "0"
             return (
-              <tr key={sub.kode} className="sub-item-row" style={{ backgroundColor:"#fafcff" }}>
-                <td style={{ padding:"6px 8px 6px 28px", border:"1px solid #ddd", fontFamily:"monospace", fontSize:12, color:"#555" }}>{sub.kode}</td>
-                <td style={{ padding:6, border:"1px solid #ddd", fontSize:13, color:"#444", paddingLeft:16 }}>↳ {sub.uraian}</td>
-                <td style={{ padding:4, border:"1px solid #ddd" }}>
+              <tr key={sub.kode} className="sub-item-row" style={{ backgroundColor: "#fafcff" }}>
+                <td style={{ padding: "6px 8px 6px 28px", border: "1px solid #ddd", fontFamily: "monospace", fontSize: 12, color: "#555" }}>
+                  {sub.kode}
+                </td>
+                <td style={{ padding: 6, border: "1px solid #ddd", fontSize: 13, color: "#444", paddingLeft: 16 }}>
+                  ↳ {sub.uraian}
+                </td>
+                <td style={{ padding: 4, border: "1px solid #ddd" }}>
                   <RupiahInput value={sd.anggaran} onChange={val => handleAnggaranChange(sub.kode, "anggaran", val)} />
                 </td>
-                <td style={{ padding:4, border:"1px solid #ddd" }}>
+                <td style={{ padding: 4, border: "1px solid #ddd" }}>
                   <RupiahInput value={sd.realisasi} onChange={val => handleAnggaranChange(sub.kode, "realisasi", val)} />
                 </td>
-                <td style={{ padding:8, border:"1px solid #ddd", textAlign:"center", fontWeight:600, color:Number(sPct)>100?"#d32f2f":"#2e7d32", fontSize:13 }}>{sPct}%</td>
+                <td style={{ padding: 8, border: "1px solid #ddd", textAlign: "center", fontWeight: 600, color: Number(sPct)>100 ? "#d32f2f" : "#2e7d32", fontSize: 13 }}>
+                  {sPct}%
+                </td>
               </tr>
             )
           })}
@@ -830,6 +946,7 @@ export default function FormLRAPage() {
       )
     }
 
+    // Normal item (no sub-items)
     const pct = Number(d.anggaran||0)>0?((Number(d.realisasi||0)/Number(d.anggaran||0))*100).toFixed(2):"0"
     return (
       <tr key={item.kode}>
@@ -1040,42 +1157,24 @@ export default function FormLRAPage() {
         /* ─── RESPONSIVE BREAKPOINTS ─── */
         @media (max-width: 767px) {
           .main-content { padding: 12px !important; }
-
-          /* Header */
           header { flex-direction: column; align-items: flex-start !important; gap: 10px !important; }
           header img { width: 48px !important; height: 48px !important; }
           header h1 { font-size: 15px !important; }
           header p { font-size: 12px !important; }
-
-          /* AI panel */
           .ai-panel { padding: 16px !important; }
           .ai-title { font-size: 16px !important; flex-wrap: wrap; }
           .ai-upload-zone { padding: 20px 12px !important; }
           .ai-upload-icon { font-size: 36px !important; }
-
-          /* Info daerah grid: 1 column on mobile */
           .info-grid-2col { grid-template-columns: 1fr !important; }
-
-          /* Grand total grid: 2 columns on mobile */
           .grand-total-grid { grid-template-columns: 1fr 1fr !important; }
-
-          /* Submit buttons: stack on mobile */
           .submit-btns { flex-direction: column !important; }
           .submit-btns button { width: 100%; }
-
-          /* Show mobile cards, hide desktop table */
           .lra-table-desktop { display: none !important; }
           .lra-cards-mobile { display: block !important; }
-
-          /* Section header flex: stack on mobile */
           .section-header-row { flex-direction: column !important; align-items: stretch !important; gap: 8px !important; }
           .section-header-row h4 { margin-right: 0 !important; }
-
-          /* Kat total row: stack on mobile */
           .kat-total-row { flex-direction: column !important; gap: 8px !important; }
           .kat-total-values { flex-direction: column !important; gap: 6px !important; font-size: 13px !important; }
-
-          /* Search results: hide province on very small screens */
           .srch-prov { display: none; }
           .srch-item { padding: 8px 10px !important; }
         }
@@ -1412,7 +1511,6 @@ export default function FormLRAPage() {
                       {/* MOBILE CARDS */}
                       <div className="lra-cards-mobile">
                         {section.items.map(item => renderItemRowMobile(item))}
-                        {/* Subtotal card */}
                         <div className="mobile-lra-subtotal">
                           <div className="mobile-lra-subtotal__title">Jumlah {section.subKategori}</div>
                           <div className="mobile-lra-subtotal__grid">
