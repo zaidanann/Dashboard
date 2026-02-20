@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSheetData, getAvailableSheets } from '@/lib/sheets'
 import { extractLRAData, autoDetectCols } from '@/lib/utils'
 
-// ── Konfigurasi default — hardcoded ───────────────────────────────────────
-export const DEFAULT_SHEET_URL  = 'https://docs.google.com/spreadsheets/d/13znDQlUkXtUvfkq7xpRSjKEcP5JAq-mKuz2SQKmPZGY/edit?usp=sharing'
-export const DEFAULT_SHEET_NAME = 'Rekap LRA 2026 (agregat)'
+// ── Konfigurasi default — hardcoded (tidak di-export agar tidak konflik Next.js) ──
+const DEFAULT_SHEET_URL  = 'https://docs.google.com/spreadsheets/d/13znDQlUkXtUvfkq7xpRSjKEcP5JAq-mKuz2SQKmPZGY/edit?usp=sharing'
+const DEFAULT_SHEET_NAME = 'Rekap LRA 2026 (agregat)'
 
 // Matikan cache — wajib untuk realtime
 export const revalidate = 0
