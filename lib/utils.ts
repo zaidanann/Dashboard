@@ -3,17 +3,9 @@ import { LRARow, JenisDaerah, KategoriSummary, SummaryNasional } from '@/types/l
 // ── Klasifikasi jenis daerah — return null jika bukan Prov/Kab/Kota ─────────
 export function classifyDaerah(name: string): JenisDaerah | null {
   const upper = name.toUpperCase()
-
-  // Kota — cek lebih dulu sebelum Kabupaten
   if (upper.startsWith('KOTA ') || upper.startsWith('KOTA.')) return 'Kota'
-
-  // Kabupaten
   if (upper.includes('KAB.') || upper.includes('KAB ') || upper.startsWith('KABUPATEN')) return 'Kabupaten'
-
-  // Provinsi
   if (upper.includes('PROV.') || upper.includes('PROV ') || upper.startsWith('PROVINSI')) return 'Provinsi'
-
-  // Tidak teridentifikasi → skip
   return null
 }
 
@@ -21,15 +13,43 @@ export function classifyDaerah(name: string): JenisDaerah | null {
 export function parseNumeric(val: string | undefined | null): number {
   if (!val) return 0
   const cleaned = val.toString().trim()
-  if (['', '-', 'none', '#value!', '#n/a'].includes(cleaned.toLowerCase())) return 0
-  const numeric = cleaned.replace(/,/g, '').replace(/\s/g, '').replace(/rp/gi, '')
+  if (['', '-', 'none', '#value!', '#n/a', '0'].includes(cleaned.toLowerCase())) return 0
+
+  // Hapus karakter non-numerik kecuali titik, koma, dan minus
+  // Format Indonesia: 1.383.511.332.957,00 → titik = pemisah ribuan, koma = desimal
+  let numeric = cleaned
+    .replace(/\s/g, '')
+    .replace(/rp/gi, '')
+    .trim()
+
+  // Deteksi format Indonesia (ada titik ribuan + koma desimal)
+  // Contoh: 1.383.511.332.957,00
+  if (/^\d{1,3}(\.\d{3})+,\d+$/.test(numeric) || /^\d{1,3}(\.\d{3})+$/.test(numeric)) {
+    // Format ribuan Indonesia: hapus titik, ganti koma jadi titik
+    numeric = numeric.replace(/\./g, '').replace(',', '.')
+  } else if (/,/.test(numeric) && /\./.test(numeric)) {
+    // Ada keduanya — cek posisi mana yang terakhir
+    const lastDot   = numeric.lastIndexOf('.')
+    const lastComma = numeric.lastIndexOf(',')
+    if (lastComma > lastDot) {
+      // Koma adalah desimal (format Indonesia)
+      numeric = numeric.replace(/\./g, '').replace(',', '.')
+    } else {
+      // Titik adalah desimal (format internasional)
+      numeric = numeric.replace(/,/g, '')
+    }
+  } else {
+    // Hanya ada koma → koma sebagai desimal atau ribuan
+    numeric = numeric.replace(/,/g, '')
+  }
+
   const result = parseFloat(numeric)
   return isNaN(result) ? 0 : result
 }
 
 // ── Cari baris header di raw data ─────────────────────────────────────────
 export function findHeaderRow(rows: string[][]): number | null {
-  for (let i = 0; i < rows.length; i++) {
+  for (let i = 0; i < Math.min(rows.length, 20); i++) {
     const rowStr = rows[i].join(' ').toUpperCase()
     if (rowStr.includes('DAERAH') && (rowStr.includes('NO.') || rowStr.includes('NO '))) {
       return i
@@ -38,11 +58,27 @@ export function findHeaderRow(rows: string[][]): number | null {
   return null
 }
 
+// ── Hitung persentase dengan batas wajar ──────────────────────────────────
+function safePersen(realisasi: number, anggaran: number): number {
+  if (anggaran <= 0 || !isFinite(anggaran)) return 0
+  if (!isFinite(realisasi)) return 0
+
+  const persen = (realisasi / anggaran) * 100
+
+  // Jika persentase > 500% kemungkinan besar ada masalah satuan
+  // Kembalikan 0 agar tidak merusak visualisasi
+  if (!isFinite(persen) || persen < 0) return 0
+
+  // Cap di 999.99% untuk menghindari outlier ekstrem merusak chart
+  // (nilai nyata seharusnya 0-150% untuk realisasi normal)
+  return Math.min(persen, 999.99)
+}
+
 // ── Extract & transform raw Sheets data → LRARow[] ────────────────────────
 export function extractLRAData(
   rawData: string[][],
   cols: {
-    penerimaanAng: number
+    penerimaanAng: number   // nomor kolom 1-based dari user input
     penerimaanReal: number
     pengeluaranAng: number
     pengeluaranReal: number
@@ -51,32 +87,44 @@ export function extractLRAData(
   const headerIdx = findHeaderRow(rawData)
   if (headerIdx === null) return []
 
-  // Cari kolom DAERAH
+  // Cari kolom DAERAH di baris header
   const headerRow = rawData[headerIdx]
   const daerahCol = headerRow.findIndex(c => c.toUpperCase().includes('DAERAH'))
   if (daerahCol === -1) return []
+
+  // PENTING: User memasukkan nomor kolom 1-based (seperti di Excel/Sheets)
+  // Konversi ke 0-based index untuk akses array
+  const idxAng   = cols.penerimaanAng   - 1
+  const idxReal  = cols.penerimaanReal  - 1
+  const idxAngB  = cols.pengeluaranAng  - 1
+  const idxRealB = cols.pengeluaranReal - 1
 
   const rows: LRARow[] = []
 
   for (let i = headerIdx + 1; i < rawData.length; i++) {
     const row = rawData[i]
+    if (!row || row.length === 0) continue
+
     const daerah = row[daerahCol]?.trim() ?? ''
 
-    // Skip invalid rows
-    if (
-      !daerah ||
-      ['', 'NO.', 'NO', 'DAERAH', 'TOTAL'].includes(daerah.toUpperCase()) ||
-      daerah.replace(/\./g, '').match(/^\d+$/)
-    ) continue
+    // Skip baris kosong / header ulang / total
+    if (!daerah) continue
+    if (['', 'NO.', 'NO', 'DAERAH', 'TOTAL', 'JUMLAH', 'NASIONAL', 'INDONESIA']
+      .includes(daerah.toUpperCase())) continue
+    // Skip baris yang isinya hanya angka (nomor urut)
+    if (daerah.replace(/\./g, '').match(/^\d+$/)) continue
 
-    const anggaranPendapatan  = parseNumeric(row[cols.penerimaanAng])
-    const realisasiPendapatan = parseNumeric(row[cols.penerimaanReal])
-    const anggaranBelanja     = parseNumeric(row[cols.pengeluaranAng])
-    const realisasiBelanja    = parseNumeric(row[cols.pengeluaranReal])
-
-    // Skip baris yang bukan Prov/Kab/Kota (TOTAL, JUMLAH, NASIONAL, dll)
     const jenis = classifyDaerah(daerah)
     if (jenis === null) continue
+
+    const anggaranPendapatan  = parseNumeric(row[idxAng])
+    const realisasiPendapatan = parseNumeric(row[idxReal])
+    const anggaranBelanja     = parseNumeric(row[idxAngB])
+    const realisasiBelanja    = parseNumeric(row[idxRealB])
+
+    // Skip baris di mana semua nilai 0 (data kosong)
+    if (anggaranPendapatan === 0 && realisasiPendapatan === 0 &&
+        anggaranBelanja === 0 && realisasiBelanja === 0) continue
 
     rows.push({
       daerah,
@@ -85,10 +133,8 @@ export function extractLRAData(
       realisasiPendapatan,
       anggaranBelanja,
       realisasiBelanja,
-      persenPendapatan: (anggaranPendapatan > 0 && isFinite(realisasiPendapatan / anggaranPendapatan))
-        ? (realisasiPendapatan / anggaranPendapatan) * 100 : 0,
-      persenBelanja: (anggaranBelanja > 0 && isFinite(realisasiBelanja / anggaranBelanja))
-        ? (realisasiBelanja / anggaranBelanja) * 100 : 0,
+      persenPendapatan: safePersen(realisasiPendapatan, anggaranPendapatan),
+      persenBelanja:    safePersen(realisasiBelanja, anggaranBelanja),
       surplusDefisit:   realisasiPendapatan - realisasiBelanja,
     })
   }
@@ -107,21 +153,23 @@ export function getSummaryNasional(data: LRARow[]): SummaryNasional {
     totalRealisasiPendapatan,
     totalAnggaranBelanja,
     totalRealisasiBelanja,
-    persenPendapatan: totalAnggaranPendapatan > 0 ? (totalRealisasiPendapatan / totalAnggaranPendapatan) * 100 : 0,
-    persenBelanja:    totalAnggaranBelanja     > 0 ? (totalRealisasiBelanja    / totalAnggaranBelanja)    * 100 : 0,
+    persenPendapatan: totalAnggaranPendapatan > 0
+      ? safePersen(totalRealisasiPendapatan, totalAnggaranPendapatan) : 0,
+    persenBelanja: totalAnggaranBelanja > 0
+      ? safePersen(totalRealisasiBelanja, totalAnggaranBelanja) : 0,
   }
 }
 
 // ── Ringkasan per kategori ─────────────────────────────────────────────────
 export function getKategoriSummary(data: LRARow[], jenis: JenisDaerah): KategoriSummary {
   const filtered = data.filter(r => r.jenis === jenis)
-  const totalAnggaran   = filtered.reduce((s, r) => s + r.anggaranPendapatan,  0)
-  const totalRealisasi  = filtered.reduce((s, r) => s + r.realisasiPendapatan, 0)
-  const totalAngBelanja = filtered.reduce((s, r) => s + r.anggaranBelanja,     0)
-  const totalRealBelanja= filtered.reduce((s, r) => s + r.realisasiBelanja,    0)
+  const totalAnggaran    = filtered.reduce((s, r) => s + r.anggaranPendapatan,  0)
+  const totalRealisasi   = filtered.reduce((s, r) => s + r.realisasiPendapatan, 0)
+  const totalAngBelanja  = filtered.reduce((s, r) => s + r.anggaranBelanja,     0)
+  const totalRealBelanja = filtered.reduce((s, r) => s + r.realisasiBelanja,    0)
   return {
-    rataRataPendapatan: totalAnggaran   > 0 ? (totalRealisasi   / totalAnggaran)   * 100 : 0,
-    rataRataBelanja:    totalAngBelanja > 0 ? (totalRealBelanja / totalAngBelanja) * 100 : 0,
+    rataRataPendapatan: totalAnggaran   > 0 ? safePersen(totalRealisasi,   totalAnggaran)   : 0,
+    rataRataBelanja:    totalAngBelanja > 0 ? safePersen(totalRealBelanja, totalAngBelanja) : 0,
     totalAnggaran,
     totalRealisasi,
     jumlahDaerah: filtered.length,
@@ -158,9 +206,9 @@ export function createDummyData(): LRARow[] {
 
   for (let i = 1; i <= 34; i++) {
     const ang = 1_500_000_000_000 + i * 50_000_000_000
-    const real = ang * (0.03 + i * 0.003)
+    const real = ang * (0.03 + i * 0.025)
     const angB = ang + 20_000_000_000
-    const realB = angB * (0.03 + i * 0.003)
+    const realB = angB * (0.03 + i * 0.025)
     rows.push({
       daerah: `Prov. Provinsi ${i}`,
       jenis: 'Provinsi',
