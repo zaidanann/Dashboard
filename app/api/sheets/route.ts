@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSheetData, getAvailableSheets } from '@/lib/sheets'
-import { extractLRAData } from '@/lib/utils'
+import { extractLRAData, autoDetectCols } from '@/lib/utils'
+
+// ── Konfigurasi default — hardcoded ───────────────────────────────────────
+export const DEFAULT_SHEET_URL  = 'https://docs.google.com/spreadsheets/d/13znDQlUkXtUvfkq7xpRSjKEcP5JAq-mKuz2SQKmPZGY/edit?usp=sharing'
+export const DEFAULT_SHEET_NAME = 'Rekap LRA 2026 (agregat)'
 
 // Matikan cache — wajib untuk realtime
 export const revalidate = 0
@@ -9,11 +13,9 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const action = searchParams.get('action')
-  const url    = searchParams.get('url')
 
-  if (!url) {
-    return NextResponse.json({ error: 'Parameter url diperlukan' }, { status: 400 })
-  }
+  // Gunakan URL dari query atau fallback ke default
+  const url = searchParams.get('url') ?? DEFAULT_SHEET_URL
 
   // ── List sheets ──────────────────────────────────────────────────────────
   if (action === 'sheets') {
@@ -29,24 +31,64 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Get data ─────────────────────────────────────────────────────────────
-  const worksheetIndex  = parseInt(searchParams.get('sheetIndex')      ?? '0')
-  const penerimaanAng   = parseInt(searchParams.get('penerimaanAng')   ?? '154')
-  const penerimaanReal  = parseInt(searchParams.get('penerimaanReal')  ?? '155')
-  const pengeluaranAng  = parseInt(searchParams.get('pengeluaranAng')  ?? '157')
-  const pengeluaranReal = parseInt(searchParams.get('pengeluaranReal') ?? '158')
-
   try {
-    const rawData = await getSheetData(url, worksheetIndex)
-    const lraData = extractLRAData(rawData, {
-      penerimaanAng,
-      penerimaanReal,
-      pengeluaranAng,
-      pengeluaranReal,
-    })
+    // Resolve worksheet index
+    let worksheetIndex = parseInt(searchParams.get('sheetIndex') ?? '-1')
 
-    return NextResponse.json({ data: lraData }, {
-      headers: { 'Cache-Control': 'no-store' }
-    })
+    // Jika tidak ada sheetIndex dari query, cari berdasarkan nama sheet default
+    if (worksheetIndex < 0 || !searchParams.get('sheetIndex')) {
+      const sheetName = searchParams.get('sheetName') ?? DEFAULT_SHEET_NAME
+      const sheets = await getAvailableSheets(url)
+      const found  = sheets.find(s => s.title === sheetName)
+      worksheetIndex = found?.index ?? 0
+    }
+
+    // Ambil raw data
+    const rawData = await getSheetData(url, worksheetIndex)
+
+    // ── Auto-detect kolom ────────────────────────────────────────────────
+    let cols: { penerimaanAng: number; penerimaanReal: number; pengeluaranAng: number; pengeluaranReal: number }
+
+    // Cek apakah user menyuplai kolom manual
+    const manualAng   = searchParams.get('penerimaanAng')
+    const manualReal  = searchParams.get('penerimaanReal')
+    const manualAngB  = searchParams.get('pengeluaranAng')
+    const manualRealB = searchParams.get('pengeluaranReal')
+
+    if (manualAng && manualReal && manualAngB && manualRealB) {
+      // Gunakan kolom dari user (mode manual sidebar)
+      cols = {
+        penerimaanAng:   parseInt(manualAng),
+        penerimaanReal:  parseInt(manualReal),
+        pengeluaranAng:  parseInt(manualAngB),
+        pengeluaranReal: parseInt(manualRealB),
+      }
+    } else {
+      // Auto-detect dari header spreadsheet
+      const detected = autoDetectCols(rawData)
+      if (!detected) {
+        // Fallback ke kolom default jika auto-detect gagal
+        cols = {
+          penerimaanAng:   155,
+          penerimaanReal:  156,
+          pengeluaranAng:  158,
+          pengeluaranReal: 159,
+        }
+      } else {
+        cols = detected
+      }
+    }
+
+    const lraData = extractLRAData(rawData, cols)
+
+    return NextResponse.json(
+      {
+        data: lraData,
+        detectedCols: cols,   // kirim balik kolom yang terdeteksi — untuk debugging
+        worksheetIndex,
+      },
+      { headers: { 'Cache-Control': 'no-store' } }
+    )
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Gagal memuat data'
     return NextResponse.json({ error: message }, { status: 500 })

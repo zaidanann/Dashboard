@@ -19,6 +19,10 @@ const JENIS_ICON: Record<JenisDaerah, string> = {
   Provinsi: '🏛️', Kabupaten: '🏘️', Kota: '🏙️'
 }
 
+// URL & Sheet default — hardcoded
+const DEFAULT_URL        = 'https://docs.google.com/spreadsheets/d/13znDQlUkXtUvfkq7xpRSjKEcP5JAq-mKuz2SQKmPZGY/edit?usp=sharing'
+const DEFAULT_SHEET_NAME = 'Rekap LRA 2026 (agregat)'
+
 // Interval pilihan dalam detik
 const REFRESH_OPTIONS = [
   { label: 'Off',     value: 0 },
@@ -38,13 +42,13 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [refreshInterval, setRefreshInterval] = useState(0)
   const [countdown, setCountdown]     = useState(0)
+  const [detectedCols, setDetectedCols] = useState<Record<string, number> | null>(null)
 
   // Simpan params terakhir untuk auto-refresh
   const lastParamsRef = useRef<{
     url: string
-    sheetIndex: number
-    cols: { penerimaanAng: number; penerimaanReal: number; pengeluaranAng: number; pengeluaranReal: number }
-  } | null>(null)
+    sheetName: string
+  }>({ url: DEFAULT_URL, sheetName: DEFAULT_SHEET_NAME })
 
   const intervalRef  = useRef<NodeJS.Timeout | null>(null)
   const countdownRef = useRef<NodeJS.Timeout | null>(null)
@@ -52,8 +56,7 @@ export default function DashboardPage() {
   // ── Core fetch function ───────────────────────────────────────────────────
   const fetchData = useCallback(async (
     url: string,
-    sheetIndex: number,
-    cols: { penerimaanAng: number; penerimaanReal: number; pengeluaranAng: number; pengeluaranReal: number },
+    sheetName: string,
     isBackground = false
   ) => {
     if (isBackground) setRefreshing(true)
@@ -63,19 +66,15 @@ export default function DashboardPage() {
     try {
       const params = new URLSearchParams({
         url,
-        sheetIndex:     String(sheetIndex),
-        penerimaanAng:  String(cols.penerimaanAng),
-        penerimaanReal: String(cols.penerimaanReal),
-        pengeluaranAng: String(cols.pengeluaranAng),
-        pengeluaranReal:String(cols.pengeluaranReal),
-        // Cache busting — paksa fetch terbaru
-        _t: String(Date.now()),
+        sheetName,
+        _t: String(Date.now()),  // cache busting
       })
       const res  = await fetch(`/api/sheets?${params}`)
       const json = await res.json()
       if (json.error) throw new Error(json.error)
       setData(json.data)
       setLastUpdated(new Date())
+      if (json.detectedCols) setDetectedCols(json.detectedCols)
     } catch (e: any) {
       setError(e.message ?? 'Gagal memuat data')
     } finally {
@@ -84,61 +83,84 @@ export default function DashboardPage() {
     }
   }, [])
 
+  // ── Auto-load saat halaman pertama kali dibuka ────────────────────────────
+  useEffect(() => {
+    fetchData(DEFAULT_URL, DEFAULT_SHEET_NAME, false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // ── Load demo ─────────────────────────────────────────────────────────────
   const handleDemoMode = useCallback(() => {
     setData(createDummyData())
     setDemo(true)
     setError('')
     setLastUpdated(new Date())
-    lastParamsRef.current = null
-    // Stop auto-refresh kalau mode demo
     setRefreshInterval(0)
   }, [])
 
-  // ── Load dari Google Sheets ───────────────────────────────────────────────
+  // ── Load dari Google Sheets (manual via sidebar) ──────────────────────────
   const handleDataLoad = useCallback(async (
     url: string,
     sheetIndex: number,
     cols: { penerimaanAng: number; penerimaanReal: number; pengeluaranAng: number; pengeluaranReal: number }
   ) => {
     setDemo(false)
-    lastParamsRef.current = { url, sheetIndex, cols }
-    await fetchData(url, sheetIndex, cols, false)
-  }, [fetchData])
+    // Simpan params — gunakan sheetIndex langsung dengan kolom manual
+    lastParamsRef.current = { url, sheetName: String(sheetIndex) }
+
+    if (isRefreshing) return
+    setLoading(true)
+    setError('')
+
+    try {
+      const params = new URLSearchParams({
+        url,
+        sheetIndex:      String(sheetIndex),
+        penerimaanAng:   String(cols.penerimaanAng),
+        penerimaanReal:  String(cols.penerimaanReal),
+        pengeluaranAng:  String(cols.pengeluaranAng),
+        pengeluaranReal: String(cols.pengeluaranReal),
+        _t: String(Date.now()),
+      })
+      const res  = await fetch(`/api/sheets?${params}`)
+      const json = await res.json()
+      if (json.error) throw new Error(json.error)
+      setData(json.data)
+      setLastUpdated(new Date())
+      if (json.detectedCols) setDetectedCols(json.detectedCols)
+    } catch (e: any) {
+      setError(e.message ?? 'Gagal memuat data')
+    } finally {
+      setLoading(false)
+    }
+  }, [isRefreshing])
 
   // ── Manual refresh ────────────────────────────────────────────────────────
   const handleManualRefresh = useCallback(() => {
-    if (!lastParamsRef.current) return
-    const { url, sheetIndex, cols } = lastParamsRef.current
-    fetchData(url, sheetIndex, cols, true)
-    // Reset countdown
+    const { url, sheetName } = lastParamsRef.current
+    fetchData(url, sheetName, true)
     if (refreshInterval > 0) setCountdown(refreshInterval)
   }, [fetchData, refreshInterval])
 
   // ── Auto-refresh setup ────────────────────────────────────────────────────
   useEffect(() => {
-    // Clear interval lama
     if (intervalRef.current)  clearInterval(intervalRef.current)
     if (countdownRef.current) clearInterval(countdownRef.current)
 
-    if (refreshInterval === 0 || !lastParamsRef.current) {
+    if (refreshInterval === 0) {
       setCountdown(0)
       return
     }
 
     setCountdown(refreshInterval)
 
-    // Countdown ticker
     countdownRef.current = setInterval(() => {
       setCountdown(prev => (prev <= 1 ? refreshInterval : prev - 1))
     }, 1000)
 
-    // Auto-refresh ticker
     intervalRef.current = setInterval(() => {
-      if (lastParamsRef.current) {
-        const { url, sheetIndex, cols } = lastParamsRef.current
-        fetchData(url, sheetIndex, cols, true)
-      }
+      const { url, sheetName } = lastParamsRef.current
+      fetchData(url, sheetName, true)
     }, refreshInterval * 1000)
 
     return () => {
@@ -178,50 +200,49 @@ export default function DashboardPage() {
         </header>
 
         {/* ── Realtime bar ── */}
-        {lastParamsRef.current && (
-          <div className="realtime-bar">
-            <div className="realtime-left">
-              {/* Indikator status */}
-              <span className={`realtime-dot ${isRefreshing ? 'refreshing' : refreshInterval > 0 ? 'active' : 'idle'}`} />
-              <span className="realtime-status">
-                {isRefreshing ? 'Memperbarui...' : refreshInterval > 0 ? `Auto-refresh aktif` : 'Auto-refresh mati'}
+        <div className="realtime-bar">
+          <div className="realtime-left">
+            <span className={`realtime-dot ${isRefreshing ? 'refreshing' : refreshInterval > 0 ? 'active' : 'idle'}`} />
+            <span className="realtime-status">
+              {isRefreshing ? 'Memperbarui...' : refreshInterval > 0 ? 'Auto-refresh aktif' : 'Auto-refresh mati'}
+            </span>
+            {lastUpdated && (
+              <span className="realtime-time">
+                · Diperbarui: {lastUpdated.toLocaleTimeString('id-ID')}
               </span>
-              {lastUpdated && (
-                <span className="realtime-time">
-                  · Diperbarui: {lastUpdated.toLocaleTimeString('id-ID')}
-                </span>
-              )}
-              {refreshInterval > 0 && countdown > 0 && (
-                <span className="realtime-countdown">· Refresh dalam {countdown}d</span>
-              )}
-            </div>
-
-            <div className="realtime-right">
-              {/* Pilih interval */}
-              <span className="realtime-label">🔄 Auto-refresh:</span>
-              <div className="interval-group">
-                {REFRESH_OPTIONS.map(opt => (
-                  <button
-                    key={opt.value}
-                    className={`interval-btn ${refreshInterval === opt.value ? 'active' : ''}`}
-                    onClick={() => setRefreshInterval(opt.value)}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              {/* Manual refresh */}
-              <button
-                className="refresh-now-btn"
-                onClick={handleManualRefresh}
-                disabled={isRefreshing || !lastParamsRef.current}
-                title="Refresh sekarang"
-              >
-                {isRefreshing ? '⏳' : '🔃'} Refresh
-              </button>
-            </div>
+            )}
+            {refreshInterval > 0 && countdown > 0 && (
+              <span className="realtime-countdown">· Refresh dalam {countdown}d</span>
+            )}
+            {/* Info sumber data */}
+            <span className="realtime-source" title={DEFAULT_URL}>
+              · 📄 {DEFAULT_SHEET_NAME}
+            </span>
           </div>
-        )}
+
+          <div className="realtime-right">
+            <span className="realtime-label">🔄 Auto-refresh:</span>
+            <div className="interval-group">
+              {REFRESH_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  className={`interval-btn ${refreshInterval === opt.value ? 'active' : ''}`}
+                  onClick={() => setRefreshInterval(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <button
+              className="refresh-now-btn"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing || isDemoMode}
+              title="Refresh sekarang"
+            >
+              {isRefreshing ? '⏳' : '🔃'} Refresh
+            </button>
+          </div>
+        </div>
 
         {/* ── Status banners ── */}
         {isDemoMode && (
@@ -231,7 +252,7 @@ export default function DashboardPage() {
           <div className="banner banner-error">❌ {error}</div>
         )}
         {isLoading && (
-          <div className="banner banner-loading">⏳ Memuat data dari Google Sheets...</div>
+          <div className="banner banner-loading">⏳ Memuat data dari Google Sheets — <strong>{DEFAULT_SHEET_NAME}</strong>...</div>
         )}
 
         {data.length > 0 && summary && (
@@ -327,9 +348,16 @@ export default function DashboardPage() {
         {data.length === 0 && !isLoading && (
           <div className="empty-state">
             <p className="empty-icon">📊</p>
-            <p className="empty-text">Pilih sumber data di sidebar untuk memulai</p>
-            <button className="sidebar-btn-primary" onClick={handleDemoMode}>
-              🧪 Coba dengan Data Demo
+            <p className="empty-text">
+              {error
+                ? 'Gagal memuat data. Coba refresh atau gunakan data demo.'
+                : 'Menghubungkan ke Google Sheets...'}
+            </p>
+            <button className="sidebar-btn-primary" onClick={handleManualRefresh}>
+              🔃 Coba Lagi
+            </button>
+            <button className="sidebar-btn-outline" style={{ marginTop: 8 }} onClick={handleDemoMode}>
+              🧪 Gunakan Data Demo
             </button>
           </div>
         )}

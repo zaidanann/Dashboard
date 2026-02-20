@@ -15,31 +15,22 @@ export function parseNumeric(val: string | undefined | null): number {
   const cleaned = val.toString().trim()
   if (['', '-', 'none', '#value!', '#n/a', '0'].includes(cleaned.toLowerCase())) return 0
 
-  // Hapus karakter non-numerik kecuali titik, koma, dan minus
-  // Format Indonesia: 1.383.511.332.957,00 → titik = pemisah ribuan, koma = desimal
   let numeric = cleaned
     .replace(/\s/g, '')
     .replace(/rp/gi, '')
     .trim()
 
-  // Deteksi format Indonesia (ada titik ribuan + koma desimal)
-  // Contoh: 1.383.511.332.957,00
   if (/^\d{1,3}(\.\d{3})+,\d+$/.test(numeric) || /^\d{1,3}(\.\d{3})+$/.test(numeric)) {
-    // Format ribuan Indonesia: hapus titik, ganti koma jadi titik
     numeric = numeric.replace(/\./g, '').replace(',', '.')
   } else if (/,/.test(numeric) && /\./.test(numeric)) {
-    // Ada keduanya — cek posisi mana yang terakhir
     const lastDot   = numeric.lastIndexOf('.')
     const lastComma = numeric.lastIndexOf(',')
     if (lastComma > lastDot) {
-      // Koma adalah desimal (format Indonesia)
       numeric = numeric.replace(/\./g, '').replace(',', '.')
     } else {
-      // Titik adalah desimal (format internasional)
       numeric = numeric.replace(/,/g, '')
     }
   } else {
-    // Hanya ada koma → koma sebagai desimal atau ribuan
     numeric = numeric.replace(/,/g, '')
   }
 
@@ -58,19 +49,147 @@ export function findHeaderRow(rows: string[][]): number | null {
   return null
 }
 
+// ── AUTO-DETECT kolom berdasarkan nama header ──────────────────────────────
+export interface AutoDetectedCols {
+  penerimaanAng: number   // 1-based
+  penerimaanReal: number
+  pengeluaranAng: number
+  pengeluaranReal: number
+}
+
+/**
+ * Mencari kolom secara otomatis dari baris-baris header (bisa multi-row header).
+ * Strategi: scan beberapa baris pertama setelah header utama,
+ * cari keyword yang relevan.
+ */
+export function autoDetectCols(rawData: string[][]): AutoDetectedCols | null {
+  // Kandidat keyword untuk setiap kolom
+  const KEYWORDS = {
+    penerimaanAng:   ['ANGGARAN PENDAPATAN', 'ANGG. PENDAPATAN', 'PENDAPATAN ANGGARAN', 'ANGGARAN\nPENDAPATAN'],
+    penerimaanReal:  ['REALISASI PENDAPATAN', 'REAL. PENDAPATAN', 'PENDAPATAN REALISASI', 'REALISASI\nPENDAPATAN'],
+    pengeluaranAng:  ['ANGGARAN BELANJA', 'ANGG. BELANJA', 'BELANJA ANGGARAN', 'ANGGARAN\nBELANJA'],
+    pengeluaranReal: ['REALISASI BELANJA', 'REAL. BELANJA', 'BELANJA REALISASI', 'REALISASI\nBELANJA'],
+  }
+
+  // Gabungkan beberapa baris header (row 0-15) menjadi satu "super row" per kolom
+  // untuk menangani multi-row header (misal: "PENDAPATAN" di row 3, "ANGGARAN" di row 4)
+  const scanRows = Math.min(rawData.length, 20)
+  const maxCols  = Math.max(...rawData.slice(0, scanRows).map(r => r.length))
+
+  // Buat representasi "kolom header" — gabungan teks dari semua baris header per kolom
+  const colHeaders: string[] = Array(maxCols).fill('')
+  for (let r = 0; r < scanRows; r++) {
+    for (let c = 0; c < rawData[r].length; c++) {
+      colHeaders[c] += ' ' + (rawData[r][c] ?? '')
+    }
+  }
+
+  // Normalize
+  const normalized = colHeaders.map(h =>
+    h.toUpperCase().replace(/\s+/g, ' ').trim()
+  )
+
+  const result: Partial<AutoDetectedCols> = {}
+
+  for (const [key, keywords] of Object.entries(KEYWORDS) as [keyof AutoDetectedCols, string[]][]) {
+    let found = -1
+
+    for (const kw of keywords) {
+      const idx = normalized.findIndex(h => h.includes(kw))
+      if (idx !== -1) { found = idx; break }
+    }
+
+    if (found !== -1) {
+      result[key] = found + 1  // konversi ke 1-based
+    }
+  }
+
+  // Fallback: jika keyword spesifik tidak ketemu, coba strategi berbasis posisi relatif
+  // Cari kolom "PENDAPATAN" dan ambil sub-kolom ANGGARAN + REALISASI
+  if (!result.penerimaanAng || !result.penerimaanReal || !result.pengeluaranAng || !result.pengeluaranReal) {
+    return fallbackDetect(rawData, normalized, result)
+  }
+
+  return result as AutoDetectedCols
+}
+
+/**
+ * Fallback detection dengan strategi yang lebih fleksibel:
+ * Cari pasangan ANGGARAN + REALISASI di bawah header PENDAPATAN dan BELANJA
+ */
+function fallbackDetect(
+  rawData: string[][],
+  normalized: string[],
+  partial: Partial<AutoDetectedCols>
+): AutoDetectedCols | null {
+  // Strategi: scan baris per baris, cari kolom yang mengandung kata kunci
+  for (let r = 0; r < Math.min(rawData.length, 20); r++) {
+    const row = rawData[r].map(c => (c ?? '').toUpperCase().trim())
+
+    // Cari "ANGGARAN" dan "REALISASI" sebagai sub-header
+    for (let c = 0; c < row.length; c++) {
+      const cell = row[c]
+
+      if (!partial.penerimaanAng && (cell.includes('ANGGARAN') || cell === 'APBD')) {
+        // Cek apakah ada "PENDAPATAN" di baris sebelumnya untuk kolom yang sama
+        let isPendapatan = false
+        for (let pr = 0; pr < r; pr++) {
+          const prev = (rawData[pr][c] ?? '').toUpperCase()
+          if (prev.includes('PENDAPATAN') || prev.includes('PENERIMAAN')) {
+            isPendapatan = true; break
+          }
+        }
+        if (isPendapatan) partial.penerimaanAng = c + 1
+      }
+
+      if (!partial.penerimaanReal && (cell.includes('REALISASI') || cell.includes('REAL.'))) {
+        let isPendapatan = false
+        for (let pr = 0; pr < r; pr++) {
+          const prev = (rawData[pr][c] ?? '').toUpperCase()
+          if (prev.includes('PENDAPATAN') || prev.includes('PENERIMAAN')) {
+            isPendapatan = true; break
+          }
+        }
+        if (isPendapatan) partial.penerimaanReal = c + 1
+      }
+
+      if (!partial.pengeluaranAng && (cell.includes('ANGGARAN') || cell === 'APBD')) {
+        let isBelanja = false
+        for (let pr = 0; pr < r; pr++) {
+          const prev = (rawData[pr][c] ?? '').toUpperCase()
+          if (prev.includes('BELANJA') || prev.includes('PENGELUARAN')) {
+            isBelanja = true; break
+          }
+        }
+        if (isBelanja) partial.pengeluaranAng = c + 1
+      }
+
+      if (!partial.pengeluaranReal && (cell.includes('REALISASI') || cell.includes('REAL.'))) {
+        let isBelanja = false
+        for (let pr = 0; pr < r; pr++) {
+          const prev = (rawData[pr][c] ?? '').toUpperCase()
+          if (prev.includes('BELANJA') || prev.includes('PENGELUARAN')) {
+            isBelanja = true; break
+          }
+        }
+        if (isBelanja) partial.pengeluaranReal = c + 1
+      }
+    }
+  }
+
+  if (partial.penerimaanAng && partial.penerimaanReal && partial.pengeluaranAng && partial.pengeluaranReal) {
+    return partial as AutoDetectedCols
+  }
+
+  return null
+}
+
 // ── Hitung persentase dengan batas wajar ──────────────────────────────────
 function safePersen(realisasi: number, anggaran: number): number {
   if (anggaran <= 0 || !isFinite(anggaran)) return 0
   if (!isFinite(realisasi)) return 0
-
   const persen = (realisasi / anggaran) * 100
-
-  // Jika persentase > 500% kemungkinan besar ada masalah satuan
-  // Kembalikan 0 agar tidak merusak visualisasi
   if (!isFinite(persen) || persen < 0) return 0
-
-  // Cap di 999.99% untuk menghindari outlier ekstrem merusak chart
-  // (nilai nyata seharusnya 0-150% untuk realisasi normal)
   return Math.min(persen, 999.99)
 }
 
@@ -78,7 +197,7 @@ function safePersen(realisasi: number, anggaran: number): number {
 export function extractLRAData(
   rawData: string[][],
   cols: {
-    penerimaanAng: number   // nomor kolom 1-based dari user input
+    penerimaanAng: number
     penerimaanReal: number
     pengeluaranAng: number
     pengeluaranReal: number
@@ -87,13 +206,10 @@ export function extractLRAData(
   const headerIdx = findHeaderRow(rawData)
   if (headerIdx === null) return []
 
-  // Cari kolom DAERAH di baris header
   const headerRow = rawData[headerIdx]
   const daerahCol = headerRow.findIndex(c => c.toUpperCase().includes('DAERAH'))
   if (daerahCol === -1) return []
 
-  // PENTING: User memasukkan nomor kolom 1-based (seperti di Excel/Sheets)
-  // Konversi ke 0-based index untuk akses array
   const idxAng   = cols.penerimaanAng   - 1
   const idxReal  = cols.penerimaanReal  - 1
   const idxAngB  = cols.pengeluaranAng  - 1
@@ -107,11 +223,9 @@ export function extractLRAData(
 
     const daerah = row[daerahCol]?.trim() ?? ''
 
-    // Skip baris kosong / header ulang / total
     if (!daerah) continue
     if (['', 'NO.', 'NO', 'DAERAH', 'TOTAL', 'JUMLAH', 'NASIONAL', 'INDONESIA']
       .includes(daerah.toUpperCase())) continue
-    // Skip baris yang isinya hanya angka (nomor urut)
     if (daerah.replace(/\./g, '').match(/^\d+$/)) continue
 
     const jenis = classifyDaerah(daerah)
@@ -122,7 +236,6 @@ export function extractLRAData(
     const anggaranBelanja     = parseNumeric(row[idxAngB])
     const realisasiBelanja    = parseNumeric(row[idxRealB])
 
-    // Skip baris di mana semua nilai 0 (data kosong)
     if (anggaranPendapatan === 0 && realisasiPendapatan === 0 &&
         anggaranBelanja === 0 && realisasiBelanja === 0) continue
 
