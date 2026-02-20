@@ -150,18 +150,10 @@ const LRA_STRUCTURE: LRAKategori[] = [
   ]},
   { kode: "6", kategori: "PEMBIAYAAN DAERAH", sections: [
     { kode: "6.1", subKategori: "Penerimaan Pembiayaan", items: [
-      { kode: "6.1.01", uraian: "Sisa Lebih Perhitungan Anggaran Tahun Sebelumnya (SiLPA)" },
-      { kode: "6.1.02", uraian: "Pencairan Dana Cadangan" },
-      { kode: "6.1.03", uraian: "Hasil Penjualan Kekayaan Daerah yang Dipisahkan" },
-      { kode: "6.1.04", uraian: "Penerimaan Pinjaman Daerah" },
-      { kode: "6.1.05", uraian: "Penerimaan Kembali Pemberian Pinjaman Daerah" },
-      { kode: "6.1.06", uraian: "Penerimaan Pembiayaan Lainnya" },
+      { kode: "6.1", uraian: "Jumlah Penerimaan Pembiayaan" },
     ]},
     { kode: "6.2", subKategori: "Pengeluaran Pembiayaan", items: [
-      { kode: "6.2.01", uraian: "Pembentukan Dana Cadangan" },
-      { kode: "6.2.02", uraian: "Penyertaan Modal (Investasi) Pemerintah Daerah" },
-      { kode: "6.2.03", uraian: "Pembayaran Pokok Utang" },
-      { kode: "6.2.04", uraian: "Pemberian Pinjaman Daerah" },
+      { kode: "6.2", uraian: "Jumlah Pengeluaran Pembiayaan" },
     ]},
   ]},
 ]
@@ -180,7 +172,7 @@ function collectAllCodes(): Record<string, AnggaranItem> {
   return d
 }
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw4rQerrRycYnH5hPUqMAxWCGY28LC0FtO82ClPDZCwo2rCnUyhCsKnsIfnXF2bFvS3/exec"
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyGEb9E9MUAp-mnMcrYVgdl15YFI7Zdi_Y_Qv7tQ3oIg4de-hAt313GaZIyuYHRrhxZ/exec"
 
 const GROQ_API_KEY_DEFAULT = process.env.NEXT_PUBLIC_GROQ_API_KEY || ""
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -190,7 +182,6 @@ function getAllValidCodes(): string {
   const codes: string[] = []
   LRA_STRUCTURE.forEach(kg => kg.sections.forEach(s => s.items.forEach(item => {
     if (item.subItems?.length) {
-      // Include parent code too
       codes.push(`${item.kode} | ${item.uraian} (total)`)
       item.subItems.forEach(sub => codes.push(`${sub.kode} | ${sub.uraian}`))
     } else {
@@ -547,16 +538,36 @@ export default function FormLRAPage() {
 
   function calcSubTotal(sk: string) {
     let a = 0, r = 0
-    Object.entries(anggaranData).forEach(([k, v]) => {
-      if (k.startsWith(sk + '.')) { a += Number(v.anggaran||0); r += Number(v.realisasi||0) }
-    })
+    // Find the section in LRA_STRUCTURE to get its items
+    LRA_STRUCTURE.forEach(kg => kg.sections.forEach(s => {
+      if (s.kode === sk) {
+        s.items.forEach(item => {
+          // Direct item (e.g. 6.1, 6.2)
+          const d = anggaranData[item.kode]
+          if (d) { a += Number(d.anggaran||0); r += Number(d.realisasi||0) }
+          // Sub-items
+          item.subItems?.forEach(sub => {
+            const sd = anggaranData[sub.kode]
+            if (sd) { a += Number(sd.anggaran||0); r += Number(sd.realisasi||0) }
+          })
+        })
+      }
+    }))
     return { a, r, sisa: a-r, pct: a > 0 ? ((r/a)*100).toFixed(2) : "0" }
   }
 
   function calcKatTotal(kk: string) {
     let a = 0, r = 0
-    Object.entries(anggaranData).forEach(([k, v]) => {
-      if (k.startsWith(kk + '.')) { a += Number(v.anggaran||0); r += Number(v.realisasi||0) }
+    LRA_STRUCTURE.forEach(kg => {
+      if (kg.kode !== kk) return
+      kg.sections.forEach(s => s.items.forEach(item => {
+        const d = anggaranData[item.kode]
+        if (d) { a += Number(d.anggaran||0); r += Number(d.realisasi||0) }
+        item.subItems?.forEach(sub => {
+          const sd = anggaranData[sub.kode]
+          if (sd) { a += Number(sd.anggaran||0); r += Number(sd.realisasi||0) }
+        })
+      }))
     })
     return { a, r, sisa: a-r, pct: a > 0 ? ((r/a)*100).toFixed(2) : "0" }
   }
@@ -571,9 +582,12 @@ export default function FormLRAPage() {
   function calcTotal() {
     let a = 0, r = 0
     LRA_STRUCTURE.forEach(kg => kg.sections.forEach(s => s.items.forEach(item => {
-      if (item.subItems?.length) {
-        item.subItems.forEach(sub => { const d = anggaranData[sub.kode]; a += Number(d?.anggaran||0); r += Number(d?.realisasi||0) })
-      } else { const d = anggaranData[item.kode]; a += Number(d?.anggaran||0); r += Number(d?.realisasi||0) }
+      const d = anggaranData[item.kode]
+      if (d) { a += Number(d.anggaran||0); r += Number(d.realisasi||0) }
+      item.subItems?.forEach(sub => {
+        const sd = anggaranData[sub.kode]
+        if (sd) { a += Number(sd.anggaran||0); r += Number(sd.realisasi||0) }
+      })
     })))
     return { a, r, sisa: a-r, pct: a > 0 ? ((r/a)*100).toFixed(2) : "0" }
   }
@@ -690,11 +704,8 @@ export default function FormLRAPage() {
       const t = calcTotal()
       const allItems: AnggaranItem[] = []
       LRA_STRUCTURE.forEach(kg => kg.sections.forEach(s => s.items.forEach(item => {
-        // Include parent item
         const pd = anggaranData[item.kode]; if(pd) allItems.push(pd)
-        if (item.subItems?.length) {
-          item.subItems.forEach(sub => { const d=anggaranData[sub.kode]; if(d) allItems.push(d) })
-        }
+        item.subItems?.forEach(sub => { const d=anggaranData[sub.kode]; if(d) allItems.push(d) })
       })))
       const payload = {
         action:"submitData", targetSheet:formData.targetSheet,
