@@ -6,6 +6,7 @@ import MetricCard from '@/components/MetricCard'
 import GaugeChart from '@/components/GaugeChart'
 import ComparisonBarChart from '@/components/BarChart'
 import DataTable from '@/components/DataTable'
+import ProvinsiFilter from '@/components/ProvinsiFilter'
 import { LRARow, JenisDaerah } from '@/types/lra'
 import {
   createDummyData,
@@ -19,11 +20,9 @@ const JENIS_ICON: Record<JenisDaerah, string> = {
   Provinsi: '🏛️', Kabupaten: '🏘️', Kota: '🏙️'
 }
 
-// URL & Sheet default — hardcoded
 const DEFAULT_URL        = 'https://docs.google.com/spreadsheets/d/13znDQlUkXtUvfkq7xpRSjKEcP5JAq-mKuz2SQKmPZGY/edit?usp=sharing'
 const DEFAULT_SHEET_NAME = 'Rekap LRA 2026 (agregat)'
 
-// Interval pilihan dalam detik
 const REFRESH_OPTIONS = [
   { label: 'Off',     value: 0 },
   { label: '30 dtk',  value: 30 },
@@ -42,39 +41,26 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [refreshInterval, setRefreshInterval] = useState(0)
   const [countdown, setCountdown]     = useState(0)
-  const [detectedCols, setDetectedCols] = useState<Record<string, number> | null>(null)
 
-  // Simpan params terakhir untuk auto-refresh
-  const lastParamsRef = useRef<{
-    url: string
-    sheetName: string
-  }>({ url: DEFAULT_URL, sheetName: DEFAULT_SHEET_NAME })
-
+  const lastParamsRef = useRef<{ url: string; sheetName: string }>({
+    url: DEFAULT_URL, sheetName: DEFAULT_SHEET_NAME
+  })
   const intervalRef  = useRef<NodeJS.Timeout | null>(null)
   const countdownRef = useRef<NodeJS.Timeout | null>(null)
 
-  // ── Core fetch function ───────────────────────────────────────────────────
   const fetchData = useCallback(async (
-    url: string,
-    sheetName: string,
-    isBackground = false
+    url: string, sheetName: string, isBackground = false
   ) => {
     if (isBackground) setRefreshing(true)
     else setLoading(true)
     setError('')
-
     try {
-      const params = new URLSearchParams({
-        url,
-        sheetName,
-        _t: String(Date.now()),  // cache busting
-      })
+      const params = new URLSearchParams({ url, sheetName, _t: String(Date.now()) })
       const res  = await fetch(`/api/sheets?${params}`)
       const json = await res.json()
       if (json.error) throw new Error(json.error)
       setData(json.data)
       setLastUpdated(new Date())
-      if (json.detectedCols) setDetectedCols(json.detectedCols)
     } catch (e: any) {
       setError(e.message ?? 'Gagal memuat data')
     } finally {
@@ -83,13 +69,11 @@ export default function DashboardPage() {
     }
   }, [])
 
-  // ── Auto-load saat halaman pertama kali dibuka ────────────────────────────
   useEffect(() => {
     fetchData(DEFAULT_URL, DEFAULT_SHEET_NAME, false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Load demo ─────────────────────────────────────────────────────────────
   const handleDemoMode = useCallback(() => {
     setData(createDummyData())
     setDemo(true)
@@ -98,20 +82,14 @@ export default function DashboardPage() {
     setRefreshInterval(0)
   }, [])
 
-  // ── Load dari Google Sheets (manual via sidebar) ──────────────────────────
   const handleDataLoad = useCallback(async (
     url: string,
     sheetIndex: number,
     cols: { penerimaanAng: number; penerimaanReal: number; pengeluaranAng: number; pengeluaranReal: number }
   ) => {
     setDemo(false)
-    // Simpan params — gunakan sheetIndex langsung dengan kolom manual
-    lastParamsRef.current = { url, sheetName: String(sheetIndex) }
-
-    if (isRefreshing) return
     setLoading(true)
     setError('')
-
     try {
       const params = new URLSearchParams({
         url,
@@ -127,37 +105,30 @@ export default function DashboardPage() {
       if (json.error) throw new Error(json.error)
       setData(json.data)
       setLastUpdated(new Date())
-      if (json.detectedCols) setDetectedCols(json.detectedCols)
+      lastParamsRef.current = { url, sheetName: String(sheetIndex) }
     } catch (e: any) {
       setError(e.message ?? 'Gagal memuat data')
     } finally {
       setLoading(false)
     }
-  }, [isRefreshing])
+  }, [])
 
-  // ── Manual refresh ────────────────────────────────────────────────────────
   const handleManualRefresh = useCallback(() => {
     const { url, sheetName } = lastParamsRef.current
     fetchData(url, sheetName, true)
     if (refreshInterval > 0) setCountdown(refreshInterval)
   }, [fetchData, refreshInterval])
 
-  // ── Auto-refresh setup ────────────────────────────────────────────────────
   useEffect(() => {
     if (intervalRef.current)  clearInterval(intervalRef.current)
     if (countdownRef.current) clearInterval(countdownRef.current)
 
-    if (refreshInterval === 0) {
-      setCountdown(0)
-      return
-    }
+    if (refreshInterval === 0) { setCountdown(0); return }
 
     setCountdown(refreshInterval)
-
     countdownRef.current = setInterval(() => {
       setCountdown(prev => (prev <= 1 ? refreshInterval : prev - 1))
     }, 1000)
-
     intervalRef.current = setInterval(() => {
       const { url, sheetName } = lastParamsRef.current
       fetchData(url, sheetName, true)
@@ -185,13 +156,9 @@ export default function DashboardPage() {
 
       <main className={`main-content${sidebarOpen ? '' : ' sidebar-hidden'}`}>
 
-        {/* ── Header ── */}
         <header className="dashboard-header">
-          <img
-            src="/logokemendagri.png"
-            alt="Logo Kemendagri"
-            style={{ width: '80px', height: '80px', objectFit: 'contain', flexShrink: 0 }}
-          />
+          <img src="/logokemendagri.png" alt="Logo Kemendagri"
+            style={{ width: '80px', height: '80px', objectFit: 'contain', flexShrink: 0 }} />
           <div className="header-text">
             <h1>KEMENTERIAN DALAM NEGERI REPUBLIK INDONESIA</h1>
             <p>📊 Dashboard Monitoring Laporan Realisasi Anggaran (LRA) Pemerintah Daerah</p>
@@ -199,7 +166,6 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        {/* ── Realtime bar ── */}
         <div className="realtime-bar">
           <div className="realtime-left">
             <span className={`realtime-dot ${isRefreshing ? 'refreshing' : refreshInterval > 0 ? 'active' : 'idle'}`} />
@@ -207,19 +173,13 @@ export default function DashboardPage() {
               {isRefreshing ? 'Memperbarui...' : refreshInterval > 0 ? 'Auto-refresh aktif' : 'Auto-refresh mati'}
             </span>
             {lastUpdated && (
-              <span className="realtime-time">
-                · Diperbarui: {lastUpdated.toLocaleTimeString('id-ID')}
-              </span>
+              <span className="realtime-time">· Diperbarui: {lastUpdated.toLocaleTimeString('id-ID')}</span>
             )}
             {refreshInterval > 0 && countdown > 0 && (
               <span className="realtime-countdown">· Refresh dalam {countdown}d</span>
             )}
-            {/* Info sumber data */}
-            <span className="realtime-source" title={DEFAULT_URL}>
-              · 📄 {DEFAULT_SHEET_NAME}
-            </span>
+            <span className="realtime-source" title={DEFAULT_URL}>· 📄 {DEFAULT_SHEET_NAME}</span>
           </div>
-
           <div className="realtime-right">
             <span className="realtime-label">🔄 Auto-refresh:</span>
             <div className="interval-group">
@@ -228,35 +188,24 @@ export default function DashboardPage() {
                   key={opt.value}
                   className={`interval-btn ${refreshInterval === opt.value ? 'active' : ''}`}
                   onClick={() => setRefreshInterval(opt.value)}
-                >
-                  {opt.label}
-                </button>
+                >{opt.label}</button>
               ))}
             </div>
             <button
               className="refresh-now-btn"
               onClick={handleManualRefresh}
               disabled={isRefreshing || isDemoMode}
-              title="Refresh sekarang"
-            >
-              {isRefreshing ? '⏳' : '🔃'} Refresh
-            </button>
+            >{isRefreshing ? '⏳' : '🔃'} Refresh</button>
           </div>
         </div>
 
-        {/* ── Status banners ── */}
-        {isDemoMode && (
-          <div className="banner banner-info">🧪 Mode Demo — menggunakan data contoh</div>
-        )}
-        {error && (
-          <div className="banner banner-error">❌ {error}</div>
-        )}
-        {isLoading && (
-          <div className="banner banner-loading">⏳ Memuat data dari Google Sheets — <strong>{DEFAULT_SHEET_NAME}</strong>...</div>
-        )}
+        {isDemoMode && <div className="banner banner-info">🧪 Mode Demo — menggunakan data contoh</div>}
+        {error      && <div className="banner banner-error">❌ {error}</div>}
+        {isLoading  && <div className="banner banner-loading">⏳ Memuat data — <strong>{DEFAULT_SHEET_NAME}</strong>...</div>}
 
         {data.length > 0 && summary && (
           <>
+            {/* Ringkasan Nasional */}
             <section className="section">
               <h2 className="section-title">📊 Ringkasan Nasional</h2>
               <div className="metrics-grid">
@@ -274,11 +223,16 @@ export default function DashboardPage() {
               </div>
             </section>
 
+            {/* Filter Per Provinsi — BARU */}
+            <ProvinsiFilter data={data} />
+
+            {/* Tabel Semua Daerah */}
             <section className="section">
               <h2 className="section-title">📋 Data Realisasi Per Daerah</h2>
               <DataTable data={data} />
             </section>
 
+            {/* Analisis Per Kategori */}
             <section className="section">
               <h2 className="section-title">📊 Analisis Per Kategori Daerah</h2>
               <div className="metrics-grid">
@@ -295,6 +249,7 @@ export default function DashboardPage() {
               </div>
             </section>
 
+            {/* Per Jenis */}
             {JENIS.map(jenis => {
               const rows = byJenis[jenis] as LRARow[]
               if (!rows.length) return null
@@ -349,16 +304,10 @@ export default function DashboardPage() {
           <div className="empty-state">
             <p className="empty-icon">📊</p>
             <p className="empty-text">
-              {error
-                ? 'Gagal memuat data. Coba refresh atau gunakan data demo.'
-                : 'Menghubungkan ke Google Sheets...'}
+              {error ? 'Gagal memuat data. Coba refresh atau gunakan data demo.' : 'Menghubungkan ke Google Sheets...'}
             </p>
-            <button className="sidebar-btn-primary" onClick={handleManualRefresh}>
-              🔃 Coba Lagi
-            </button>
-            <button className="sidebar-btn-outline" style={{ marginTop: 8 }} onClick={handleDemoMode}>
-              🧪 Gunakan Data Demo
-            </button>
+            <button className="sidebar-btn-primary" onClick={handleManualRefresh}>🔃 Coba Lagi</button>
+            <button className="sidebar-btn-outline" style={{ marginTop: 8 }} onClick={handleDemoMode}>🧪 Gunakan Data Demo</button>
           </div>
         )}
 
