@@ -180,7 +180,7 @@ function collectAllCodes(): Record<string, AnggaranItem> {
   return d
 }
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwPQi9KeoWah05sS24uegFIBmbshGVDYu684RV4ldMcDjraLEJdzbUUNbjw-lX6OV-a/exec"
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw4rQerrRycYnH5hPUqMAxWCGY28LC0FtO82ClPDZCwo2rCnUyhCsKnsIfnXF2bFvS3/exec"
 
 const GROQ_API_KEY_DEFAULT = process.env.NEXT_PUBLIC_GROQ_API_KEY || ""
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
