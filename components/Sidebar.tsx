@@ -30,7 +30,7 @@ const NAV_ITEMS = [
   },
   {
     href: '/form-lra',
-    icon: '✎',
+    icon: '✏️',
     label: 'Form Input LRA',
     desc: 'Input Data Realisasi',
     isNew: true,
@@ -246,8 +246,8 @@ export default function Sidebar({ onDataLoad, onDemoMode, isLoading, isOpen, onT
         .snav {
           display: flex;
           flex-direction: column;
-          gap: 6px;
-          margin-top: 8px;
+          gap: 8px;
+          margin-top: 10px;
         }
 
         /* ── Nav item ── */
@@ -255,61 +255,139 @@ export default function Sidebar({ onDataLoad, onDemoMode, isLoading, isOpen, onT
           position: relative;
           display: flex;
           align-items: center;
-          gap: 11px;
-          padding: 10px 12px;
-          border-radius: 12px;
+          gap: 13px;
+          padding: 13px 14px;
+          border-radius: 16px;
           text-decoration: none;
           overflow: hidden;
-          transition: background 0.2s ease, transform 0.15s ease;
-          border: 1px solid transparent;
+          cursor: pointer;
+
+          /* Glassmorphism base */
+          background: rgba(255, 255, 255, 0.04);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          border: 1px solid rgba(255, 255, 255, 0.07);
+
+          /* Smooth multi-property transition */
+          transition:
+            background   0.35s cubic-bezier(0.25, 0.8, 0.25, 1),
+            border-color 0.35s cubic-bezier(0.25, 0.8, 0.25, 1),
+            transform    0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+            box-shadow   0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
         }
 
         .snav-item:hover {
-          background: rgba(255, 255, 255, 0.08);
-          transform: translateX(2px);
-          border-color: rgba(255, 255, 255, 0.08);
+          background: rgba(255, 255, 255, 0.10);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          border-color: rgba(147, 197, 253, 0.22);
+          transform: translateX(4px) scale(1.012);
+          box-shadow:
+            0 4px 20px rgba(0, 0, 0, 0.25),
+            inset 0 1px 0 rgba(255, 255, 255, 0.12);
         }
 
         .snav-item--active {
-          background: rgba(255, 255, 255, 0.12);
-          border-color: rgba(100, 181, 246, 0.35);
-          transform: translateX(0);
+          background: rgba(59, 130, 246, 0.18);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-color: rgba(147, 197, 253, 0.40);
+          transform: translateX(0) scale(1);
+          box-shadow:
+            0 6px 24px rgba(59, 130, 246, 0.22),
+            0 2px 8px rgba(0, 0, 0, 0.30),
+            inset 0 1px 0 rgba(255, 255, 255, 0.15);
         }
 
-        /* ── Glow background on active ── */
+        /* ── Shimmer / glow layer on active ── */
         .snav-glow {
           position: absolute;
           inset: 0;
-          background: linear-gradient(135deg, rgba(100, 181, 246, 0.15) 0%, rgba(30, 64, 175, 0.1) 100%);
-          border-radius: 12px;
+          background: linear-gradient(
+            120deg,
+            rgba(147, 197, 253, 0.10) 0%,
+            rgba(59, 130, 246, 0.14) 50%,
+            rgba(30, 64, 175, 0.08) 100%
+          );
+          border-radius: 16px;
           pointer-events: none;
+        }
+
+        /* Subtle top-edge highlight */
+        .snav-item--active::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 14px;
+          right: 14px;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(147, 197, 253, 0.6), transparent);
+          border-radius: 1px;
+        }
+
+        /* Left accent bar */
+        .snav-item--active::after {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 20%;
+          bottom: 20%;
+          width: 3px;
+          background: linear-gradient(180deg, #60a5fa, #3b82f6, #1d4ed8);
+          border-radius: 0 3px 3px 0;
+          box-shadow: 0 0 8px rgba(59, 130, 246, 0.7);
         }
 
         /* ── Icon box ── */
         .snav-icon-box {
           position: relative;
           z-index: 1;
-          width: 34px;
-          height: 34px;
-          border-radius: 9px;
-          background: rgba(255, 255, 255, 0.1);
+          width: 38px;
+          height: 38px;
+          border-radius: 11px;
+          background: rgba(255, 255, 255, 0.08);
+          backdrop-filter: blur(8px);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 16px;
+          font-size: 17px;
           flex-shrink: 0;
-          transition: background 0.2s, box-shadow 0.2s;
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.10);
+          transition:
+            background  0.35s ease,
+            box-shadow  0.35s ease,
+            transform   0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         .snav-item:hover .snav-icon-box {
-          background: rgba(255, 255, 255, 0.15);
+          background: rgba(255, 255, 255, 0.14);
+          transform: scale(1.08) rotate(-3deg);
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
         }
 
         .snav-icon-box--active {
-          background: linear-gradient(135deg, #1e40af, #3b82f6) !important;
-          box-shadow: 0 0 12px rgba(59, 130, 246, 0.5), 0 2px 8px rgba(0,0,0,0.3);
-          border-color: rgba(147, 197, 253, 0.4);
+          background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 60%, #60a5fa 100%) !important;
+          box-shadow:
+            0 0 0 1px rgba(147, 197, 253, 0.35),
+            0 0 16px rgba(59, 130, 246, 0.55),
+            0 4px 12px rgba(0, 0, 0, 0.35);
+          border-color: rgba(147, 197, 253, 0.45);
+          transform: scale(1) rotate(0deg) !important;
+        }
+
+        /* ── Icon box khusus Form LRA (item ke-2, non-aktif) ── */
+        .snav-item:nth-child(2) .snav-icon-box:not(.snav-icon-box--active) {
+          background: linear-gradient(135deg, rgba(251, 191, 36, 0.25) 0%, rgba(245, 158, 11, 0.20) 100%);
+          border-color: rgba(251, 191, 36, 0.35);
+          color: #fbbf24;
+          text-shadow: 0 0 8px rgba(251, 191, 36, 0.7);
+          box-shadow: 0 0 10px rgba(251, 191, 36, 0.2), inset 0 1px 0 rgba(255,255,255,0.1);
+        }
+
+        .snav-item:nth-child(2):hover .snav-icon-box:not(.snav-icon-box--active) {
+          background: linear-gradient(135deg, rgba(251, 191, 36, 0.38) 0%, rgba(245, 158, 11, 0.30) 100%);
+          box-shadow: 0 0 16px rgba(251, 191, 36, 0.40), inset 0 1px 0 rgba(255,255,255,0.15);
+          border-color: rgba(251, 191, 36, 0.55);
         }
 
         /* ── Text block ── */
@@ -319,35 +397,48 @@ export default function Sidebar({ onDataLoad, onDemoMode, isLoading, isOpen, onT
           flex: 1;
           display: flex;
           flex-direction: column;
-          gap: 1px;
+          gap: 2px;
           min-width: 0;
         }
 
         .snav-label {
-          font-size: 13px;
-          font-weight: 600;
-          color: rgba(255, 255, 255, 0.9);
+          font-size: 13.5px;
+          font-weight: 650;
+          color: rgba(255, 255, 255, 0.82);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
           line-height: 1.3;
+          letter-spacing: 0.1px;
+          transition: color 0.25s ease;
+        }
+
+        .snav-item:hover .snav-label {
+          color: rgba(255, 255, 255, 0.97);
         }
 
         .snav-item--active .snav-label {
           color: #fff;
+          text-shadow: 0 0 12px rgba(147, 197, 253, 0.5);
         }
 
         .snav-desc {
-          font-size: 10.5px;
-          color: rgba(255, 255, 255, 0.4);
+          font-size: 11px;
+          color: rgba(255, 255, 255, 0.35);
           font-weight: 400;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          letter-spacing: 0.1px;
+          transition: color 0.25s ease;
+        }
+
+        .snav-item:hover .snav-desc {
+          color: rgba(255, 255, 255, 0.55);
         }
 
         .snav-item--active .snav-desc {
-          color: rgba(147, 197, 253, 0.8);
+          color: rgba(147, 197, 253, 0.75);
         }
 
         /* ── Right side (badge / arrow) ── */
@@ -360,34 +451,36 @@ export default function Sidebar({ onDataLoad, onDemoMode, isLoading, isOpen, onT
         }
 
         .snav-badge {
-          font-size: 9.5px;
+          font-size: 9px;
           font-weight: 800;
-          letter-spacing: 0.3px;
+          letter-spacing: 0.5px;
           background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
           color: #fff;
-          padding: 3px 8px;
+          padding: 3px 9px;
           border-radius: 20px;
-          box-shadow: 0 2px 6px rgba(239, 68, 68, 0.4);
-          animation: badgePop 2.5s ease-in-out infinite;
+          box-shadow:
+            0 2px 8px rgba(239, 68, 68, 0.45),
+            inset 0 1px 0 rgba(255,255,255,0.2);
+          animation: badgePop 2.8s ease-in-out infinite;
           text-transform: uppercase;
         }
 
         @keyframes badgePop {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50%       { opacity: 0.75; transform: scale(0.95); }
+          0%, 100% { opacity: 1;    transform: scale(1);    }
+          50%       { opacity: 0.8; transform: scale(0.93); }
         }
 
         .snav-arrow {
-          font-size: 18px;
+          font-size: 20px;
           font-weight: 300;
-          color: rgba(147, 197, 253, 0.9);
+          color: rgba(147, 197, 253, 0.85);
           line-height: 1;
-          animation: arrowPulse 1.5s ease-in-out infinite;
+          animation: arrowPulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
 
         @keyframes arrowPulse {
-          0%, 100% { transform: translateX(0); opacity: 0.9; }
-          50%       { transform: translateX(2px); opacity: 1; }
+          0%, 100% { transform: translateX(0);   opacity: 0.75; }
+          50%       { transform: translateX(3px); opacity: 1;    }
         }
       `}</style>
     </aside>
