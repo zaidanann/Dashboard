@@ -6,16 +6,8 @@ import { useRouter } from 'next/navigation'
 // KONFIGURASI UKURAN LOGO — sesuaikan di sini
 // ============================================================
 const LOGO_CONFIG = {
-  // Logo di header utama (kiri header biru)
-  header: {
-    width: 80,   // px — lebar logo
-    height: 80,  // px — tinggi logo
-  },
-  // Logo di card "Informasi Daerah" (header card biru)
-  infoDaerah: {
-    width: 44,   // px — lebar logo
-    height: 44,  // px — tinggi logo
-  },
+  header: { width: 80, height: 80 },
+  infoDaerah: { width: 44, height: 44 },
 }
 // ============================================================
 
@@ -216,6 +208,14 @@ interface AIParseResult {
   items: Array<{ kodeRekening: string; anggaran: number; realisasi: number }>
 }
 
+interface SuccessInfo {
+  show: boolean
+  daerah: string
+  sheet: string
+  itemsCount: number
+  timestamp: string
+}
+
 function formatRupiahInput(value: string) {
   if (!value) return ""
   const num = parseFloat(value) / 100
@@ -224,17 +224,12 @@ function formatRupiahInput(value: string) {
 }
 
 function RupiahInput({
-  value,
-  onChange,
-  placeholder = "0",
+  value, onChange, placeholder = "0",
 }: {
-  value: string
-  onChange: (val: string) => void
-  placeholder?: string
+  value: string; onChange: (val: string) => void; placeholder?: string
 }) {
   const [raw, setRaw] = useState("")
   const [focused, setFocused] = useState(false)
-
   const displayValue = focused ? raw : value && value !== "0" ? formatRupiahInput(value) : ""
 
   const handleFocus = () => {
@@ -242,11 +237,9 @@ function RupiahInput({
     setRaw(num > 0 ? num.toFixed(2) : "")
     setFocused(true)
   }
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setRaw(e.target.value.replace(/[^\d.,]/g, ""))
   }
-
   const handleBlur = () => {
     setFocused(false)
     if (!raw.trim()) { onChange(""); return }
@@ -264,13 +257,9 @@ function RupiahInput({
 
   return (
     <input
-      type="text"
-      value={displayValue}
-      onFocus={handleFocus}
-      onChange={handleChange}
-      onBlur={handleBlur}
-      placeholder={placeholder}
-      className="rupiah-input"
+      type="text" value={displayValue}
+      onFocus={handleFocus} onChange={handleChange} onBlur={handleBlur}
+      placeholder={placeholder} className="rupiah-input"
     />
   )
 }
@@ -371,6 +360,145 @@ Kembalikan HANYA JSON, tidak ada teks lain sama sekali.`
   }
 }
 
+// ================================================================
+// SUCCESS MODAL COMPONENT
+// ================================================================
+function SuccessModal({
+  show, daerah, sheet, itemsCount, timestamp, onClose, onReset,
+}: {
+  show: boolean; daerah: string; sheet: string; itemsCount: number; timestamp: string
+  onClose: () => void; onReset: () => void
+}) {
+  if (!show) return null
+  return (
+    <>
+      <div style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+        zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '20px', backdropFilter: 'blur(6px)',
+        animation: 'smFadeIn 0.2s ease',
+      }}>
+        <div style={{
+          background: '#fff', borderRadius: 18, maxWidth: 500, width: '100%',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.28), 0 4px 20px rgba(0,0,0,0.12)',
+          overflow: 'hidden', animation: 'smSlideUp 0.28s cubic-bezier(0.34,1.56,0.64,1)',
+        }}>
+          {/* Green header */}
+          <div style={{
+            background: 'linear-gradient(135deg, #15803d 0%, #16a34a 55%, #22c55e 100%)',
+            padding: '30px 30px 24px',
+            position: 'relative', overflow: 'hidden',
+          }}>
+            <div style={{ position:'absolute', right:-50, top:-50, width:160, height:160, borderRadius:'50%', background:'rgba(255,255,255,0.07)', pointerEvents:'none' }} />
+            <div style={{ position:'absolute', left:-20, bottom:-30, width:100, height:100, borderRadius:'50%', background:'rgba(255,255,255,0.04)', pointerEvents:'none' }} />
+            <div style={{ position:'absolute', right:60, bottom:-10, width:60, height:60, borderRadius:'50%', background:'rgba(255,255,255,0.05)', pointerEvents:'none' }} />
+
+            {/* Checkmark circle */}
+            <div style={{
+              width: 60, height: 60, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 28, marginBottom: 14, position: 'relative',
+              border: '2px solid rgba(255,255,255,0.4)',
+            }}>✅</div>
+
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', position: 'relative', lineHeight: 1.2, marginBottom: 6 }}>
+              Data Berhasil Dikirim!
+            </div>
+            <div style={{ fontSize: 13.5, color: 'rgba(255,255,255,0.85)', position: 'relative', fontWeight: 400 }}>
+              LRA telah berhasil disubmit ke Google Sheets
+            </div>
+          </div>
+
+          {/* Info rows */}
+          <div style={{ padding: '22px 28px 12px' }}>
+            {([
+              ["🏛️", "Daerah / Wilayah", daerah],
+              ["📊", "Target Sheet", sheet],
+              ["📋", "Item Data Terisi", `${itemsCount} item anggaran`],
+              ["🕐", "Waktu Submit", timestamp],
+            ] as [string, string, string][]).map(([icon, label, val]) => (
+              <div key={label} style={{
+                display: 'flex', gap: 12, alignItems: 'center',
+                padding: '11px 14px', borderRadius: 10, marginBottom: 8,
+                background: '#f8fafc', border: '1px solid #e2e8f0',
+                transition: 'background 0.15s',
+              }}>
+                <span style={{ fontSize: 20, flexShrink: 0, lineHeight: 1 }}>{icon}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>
+                    {label}
+                  </div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', wordBreak: 'break-word', lineHeight: 1.3 }}>
+                    {val}
+                  </div>
+                </div>
+                <div style={{
+                  width: 24, height: 24, borderRadius: '50%',
+                  background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, fontSize: 12, color: '#16a34a', fontWeight: 700,
+                }}>✓</div>
+              </div>
+            ))}
+
+            {/* Info note */}
+            <div style={{
+              background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10,
+              padding: '11px 14px', marginTop: 4,
+              display: 'flex', gap: 10, alignItems: 'flex-start',
+            }}>
+              <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>💡</span>
+              <span style={{ fontSize: 12.5, color: '#15803d', lineHeight: 1.5, fontWeight: 500 }}>
+                Data Anda telah masuk ke spreadsheet. Silakan verifikasi langsung di Google Sheets jika diperlukan.
+              </span>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div style={{ padding: '16px 28px 26px', display: 'flex', gap: 10 }}>
+            <button
+              onClick={onReset}
+              style={{
+                flex: 1, padding: '13px 16px', borderRadius: 10,
+                border: '1.5px solid #e2e8f0', background: '#fff',
+                color: '#475569', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+                fontFamily: 'Plus Jakarta Sans, sans-serif', transition: 'all 0.15s',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}
+              onMouseOver={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#cbd5e1' }}
+              onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#e2e8f0' }}
+            >
+              🔄 Input Data Baru
+            </button>
+            <button
+              onClick={onClose}
+              style={{
+                flex: 1, padding: '13px 16px', borderRadius: 10,
+                border: 'none',
+                background: 'linear-gradient(135deg, #15803d, #16a34a)',
+                color: '#fff', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+                fontFamily: 'Plus Jakarta Sans, sans-serif',
+                boxShadow: '0 4px 14px rgba(21,128,61,0.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                transition: 'all 0.15s',
+              }}
+              onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(21,128,61,0.45)' }}
+              onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(21,128,61,0.4)' }}
+            >
+              ✅ Tutup Notifikasi
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes smFadeIn { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes smSlideUp { from { transform: translateY(32px) scale(0.96); opacity: 0 } to { transform: translateY(0) scale(1); opacity: 1 } }
+      `}</style>
+    </>
+  )
+}
+
 export default function FormLRAPage() {
   const router = useRouter()
   const [formData, setFormData] = useState({
@@ -405,6 +533,11 @@ export default function FormLRAPage() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
   const searchRef = useRef<HTMLDivElement>(null)
+
+  // ── SUCCESS MODAL STATE ──
+  const [successInfo, setSuccessInfo] = useState<SuccessInfo>({
+    show: false, daerah: "", sheet: "", itemsCount: 0, timestamp: "",
+  })
 
   useEffect(() => { setAnggaranData(collectAllCodes()) }, [])
   useEffect(() => {
@@ -756,6 +889,9 @@ export default function FormLRAPage() {
     }
   }
 
+  // ================================================================
+  // HANDLE SUBMIT — versi baru: tidak redirect, tampilkan modal
+  // ================================================================
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.provinsi || !formData.kabupatenKota || !formData.namaPemohon) {
@@ -769,6 +905,10 @@ export default function FormLRAPage() {
         const pd = anggaranData[item.kode]; if(pd) allItems.push(pd)
         item.subItems?.forEach(sub => { const d=anggaranData[sub.kode]; if(d) allItems.push(d) })
       })))
+
+      // Hitung item yang terisi
+      const itemsWithValue = allItems.filter(i => Number(i.anggaran||0) > 0 || Number(i.realisasi||0) > 0)
+
       const payload = {
         action:"submitData",
         targetSheet:formData.targetSheet,
@@ -795,20 +935,56 @@ export default function FormLRAPage() {
         tanggalInput:new Date().toISOString(),
         status:"Pending",
       }
+
+      // Submit ke hidden iframe agar tidak redirect
       const form = document.createElement('form')
-      form.method='POST'; form.action=SCRIPT_URL; form.target='_blank'
+      form.method = 'POST'
+      form.action = SCRIPT_URL
+      form.target = 'hidden_submit_frame' // ← target iframe tersembunyi
       const input = document.createElement('input')
-      input.type='hidden'; input.name='data'; input.value=JSON.stringify(payload)
+      input.type = 'hidden'; input.name = 'data'; input.value = JSON.stringify(payload)
       form.appendChild(input); document.body.appendChild(form); form.submit(); document.body.removeChild(form)
+
+      // Tampilkan success modal setelah delay singkat
       setTimeout(() => {
-        setMessage("✅ Data LRA berhasil dikirim!")
-        setTimeout(() => router.push('/'), 2000)
-      }, 1000)
+        setSuccessInfo({
+          show: true,
+          daerah: formData.kabupatenKota || formData.provinsi,
+          sheet: formData.targetSheet,
+          itemsCount: itemsWithValue.length,
+          timestamp: new Date().toLocaleString('id-ID', {
+            day: '2-digit', month: 'long', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+          }),
+        })
+        setLoading(false)
+      }, 1200)
+
     } catch (err) {
       setMessage("❌ Gagal: " + (err instanceof Error ? err.message : "Unknown error"))
-    } finally {
       setLoading(false)
     }
+  }
+
+  // Reset seluruh form untuk input data baru
+  const handleReset = () => {
+    setSuccessInfo({ show: false, daerah: "", sheet: "", itemsCount: 0, timestamp: "" })
+    setAnggaranData(collectAllCodes())
+    setFormData({
+      provinsi: "",
+      kabupatenKota: "",
+      tahunAnggaran: "2024",
+      namaPemohon: "",
+      keterangan: "",
+      targetSheet: "31 Januari 2025",
+    })
+    setSearchQuery("")
+    setMessage("")
+    setUploadedFile(null)
+    setFilePreview("")
+    setAiUploadedFile(null)
+    setAiResult(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   function renderItemRowMobile(item: LRAItem) {
@@ -993,7 +1169,6 @@ export default function FormLRAPage() {
           color: var(--text-primary);
         }
 
-        /* ── HEADER ── */
         .page-header {
           background: linear-gradient(135deg, #0b3d6b 0%, #0f4c75 35%, #1b6ca8 70%, #2980b9 100%);
           border-radius: 14px;
@@ -1033,9 +1208,6 @@ export default function FormLRAPage() {
           border-right: 1px solid rgba(255,255,255,0.15);
           background: rgba(0,0,0,0.12);
         }
-        .page-header__logo-svg {
-          display: block;
-        }
 
         .page-header__identity {
           padding: 22px 28px 22px 24px;
@@ -1058,8 +1230,7 @@ export default function FormLRAPage() {
           font-weight: 600;
         }
         .page-header__divider {
-          width: 40px;
-          height: 2px;
+          width: 40px; height: 2px;
           background: #f1c40f;
           margin: 10px 0;
           border-radius: 2px;
@@ -1105,20 +1276,11 @@ export default function FormLRAPage() {
         @media (max-width: 768px) {
           .page-header__inner { flex-wrap: wrap; }
           .page-header__logo-wrap { padding: 16px 20px; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%; justify-content: flex-start; gap: 14px; }
-          .page-header__logo-svg { width: 56px; height: 56px; }
           .page-header__identity { display: none; }
           .page-header__doc { text-align: left; padding: 16px 20px; }
           .page-header__title { font-size: 17px; }
-          /* Show ministry name inside logo wrap on mobile */
-          .page-header__logo-wrap::after {
-            content: attr(data-ministry);
-            color: white;
-            font-size: 13px;
-            font-weight: 700;
-          }
         }
 
-        /* ── INFO DAERAH HEADER ── */
         .info-daerah-header {
           display: flex;
           align-items: center;
@@ -1139,14 +1301,6 @@ export default function FormLRAPage() {
           background: rgba(255,255,255,0.05);
           pointer-events: none;
         }
-        .info-daerah-header__logo {
-          flex-shrink: 0;
-          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
-        }
-        .info-daerah-header__text {
-          flex: 1;
-          min-width: 0;
-        }
         .info-daerah-header__title {
           font-size: 15px;
           font-weight: 800;
@@ -1160,9 +1314,6 @@ export default function FormLRAPage() {
           font-weight: 400;
           line-height: 1.4;
         }
-        .info-daerah-header__stamp {
-          flex-shrink: 0;
-        }
         .info-daerah-header__stamp-inner {
           border: 2px solid rgba(241,196,15,0.8);
           border-radius: 6px;
@@ -1170,25 +1321,14 @@ export default function FormLRAPage() {
           text-align: center;
           background: rgba(241,196,15,0.1);
         }
-        .info-daerah-header__stamp-line1 {
-          font-size: 9px;
-          font-weight: 800;
-          color: #f1c40f;
-          letter-spacing: 0.1em;
-        }
-        .info-daerah-header__stamp-line2 {
-          font-size: 11px;
-          font-weight: 800;
-          color: #f1c40f;
-          letter-spacing: 0.06em;
-        }
+        .info-daerah-header__stamp-line1 { font-size: 9px; font-weight: 800; color: #f1c40f; letter-spacing: 0.1em; }
+        .info-daerah-header__stamp-line2 { font-size: 11px; font-weight: 800; color: #f1c40f; letter-spacing: 0.06em; }
 
         @media (max-width: 600px) {
           .info-daerah-header { padding: 14px 16px; margin: -18px -16px 16px -16px; }
           .info-daerah-header__stamp { display: none; }
         }
 
-        /* ── CARD ── */
         .card {
           background: var(--surface);
           border: 1px solid var(--border);
@@ -1202,77 +1342,47 @@ export default function FormLRAPage() {
           background: linear-gradient(135deg, #faf5ff 0%, #f5f3ff 100%);
           box-shadow: 0 2px 12px rgba(109,40,217,0.08);
         }
-        .card--warning {
-          border-color: #fed7aa;
-          background: #fffbf5;
-        }
+        .card--warning { border-color: #fed7aa; background: #fffbf5; }
 
         .card__header {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-bottom: 18px;
-          padding-bottom: 14px;
+          display: flex; align-items: center; gap: 10px;
+          margin-bottom: 18px; padding-bottom: 14px;
           border-bottom: 1px solid var(--border);
         }
         .card__icon {
           width: 36px; height: 36px;
           border-radius: 8px;
           display: flex; align-items: center; justify-content: center;
-          font-size: 16px;
-          flex-shrink: 0;
+          font-size: 16px; flex-shrink: 0;
         }
         .card__icon--blue { background: var(--primary-light); }
         .card__icon--ai { background: #ede9fe; }
         .card__icon--orange { background: #fff7ed; }
         .card__icon--green { background: var(--success-light); }
-        .card__title {
-          font-size: 15px;
-          font-weight: 700;
-          color: var(--text-primary);
-          margin: 0;
-        }
-        .card__desc {
-          font-size: 12.5px;
-          color: var(--text-muted);
-          margin-top: 2px;
-        }
+        .card__title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0; }
+        .card__desc { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
 
-        /* ── AI PANEL ── */
         .ai-badge {
-          background: var(--ai-primary);
-          color: #fff;
-          font-size: 10px;
-          font-weight: 700;
-          letter-spacing: 0.06em;
-          padding: 2px 8px;
-          border-radius: 20px;
+          background: var(--ai-primary); color: #fff;
+          font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+          padding: 2px 8px; border-radius: 20px;
         }
         .ai-link {
-          font-size: 12px;
-          color: var(--ai-primary);
-          text-decoration: none;
-          font-weight: 600;
+          font-size: 12px; color: var(--ai-primary);
+          text-decoration: none; font-weight: 600;
           display: inline-flex; align-items: center; gap: 3px;
         }
         .ai-link:hover { text-decoration: underline; }
 
         .api-key-input {
-          width: 100%;
-          padding: 10px 14px;
+          width: 100%; padding: 10px 14px;
           border: 2px solid var(--ai-border);
           border-radius: var(--radius-sm);
-          font-size: 13px;
-          font-family: 'DM Mono', monospace;
-          background: #fff;
-          color: var(--text-primary);
+          font-size: 13px; font-family: 'DM Mono', monospace;
+          background: #fff; color: var(--text-primary);
           transition: border-color 0.15s;
         }
-        .api-key-input:focus {
-          outline: none;
-          border-color: var(--ai-primary);
-          box-shadow: 0 0 0 3px rgba(109,40,217,0.1);
-        }
+        .api-key-input:focus { outline: none; border-color: var(--ai-primary); box-shadow: 0 0 0 3px rgba(109,40,217,0.1); }
 
         .ai-drop-zone {
           border: 2px dashed var(--ai-border);
@@ -1283,49 +1393,31 @@ export default function FormLRAPage() {
           background: rgba(109,40,217,0.02);
           transition: all 0.2s;
         }
-        .ai-drop-zone:hover {
-          border-color: var(--ai-primary);
-          background: rgba(109,40,217,0.05);
-        }
+        .ai-drop-zone:hover { border-color: var(--ai-primary); background: rgba(109,40,217,0.05); }
         .ai-drop-zone__icon { font-size: 36px; margin-bottom: 10px; }
         .ai-drop-zone__title { font-weight: 700; color: #5b21b6; font-size: 14px; margin-bottom: 6px; }
         .ai-drop-zone__desc { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
         .file-chips { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-        .file-chip {
-          background: #ede9fe;
-          color: #5b21b6;
-          padding: 3px 10px;
-          border-radius: 20px;
-          font-size: 11px;
-          font-weight: 600;
-        }
+        .file-chip { background: #ede9fe; color: #5b21b6; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
 
         .ai-progress {
-          margin-top: 12px;
-          padding: 10px 14px;
-          background: #ede9fe;
-          border-radius: var(--radius-sm);
-          font-size: 13px;
-          color: #5b21b6;
-          font-weight: 500;
+          margin-top: 12px; padding: 10px 14px;
+          background: #ede9fe; border-radius: var(--radius-sm);
+          font-size: 13px; color: #5b21b6; font-weight: 500;
           display: flex; align-items: center; gap: 8px;
         }
 
         .uploaded-file-bar {
           display: flex; align-items: center; gap: 10px;
           padding: 8px 12px;
-          background: #f0fdf4;
-          border: 1px solid var(--success-border);
-          border-radius: var(--radius-sm);
-          margin-top: 10px;
+          background: #f0fdf4; border: 1px solid var(--success-border);
+          border-radius: var(--radius-sm); margin-top: 10px;
         }
         .uploaded-file-bar__name { font-size: 13px; color: var(--success); flex: 1; font-weight: 500; }
 
         .ai-result-box {
-          margin-top: 14px;
-          padding: 14px 16px;
-          background: #f0fdf4;
-          border: 1px solid var(--success-border);
+          margin-top: 14px; padding: 14px 16px;
+          background: #f0fdf4; border: 1px solid var(--success-border);
           border-radius: var(--radius);
         }
         .ai-result-box__title { font-weight: 700; color: var(--success); margin-bottom: 10px; font-size: 13px; }
@@ -1333,8 +1425,7 @@ export default function FormLRAPage() {
         .ai-result-row b { color: var(--text-primary); }
 
         .ai-steps {
-          margin-top: 16px;
-          padding: 14px 16px;
+          margin-top: 16px; padding: 14px 16px;
           background: rgba(109,40,217,0.04);
           border-radius: var(--radius);
           border: 1px solid rgba(109,40,217,0.1);
@@ -1343,97 +1434,57 @@ export default function FormLRAPage() {
         .ai-steps__grid { display: flex; gap: 12px; flex-wrap: wrap; }
         .ai-step { display: flex; gap: 10px; align-items: flex-start; flex: 1 1 200px; }
         .ai-step__num {
-          background: var(--ai-primary);
-          color: #fff;
-          width: 22px; height: 22px;
-          border-radius: 50%;
+          background: var(--ai-primary); color: #fff;
+          width: 22px; height: 22px; border-radius: 50%;
           display: flex; align-items: center; justify-content: center;
-          font-size: 11px; font-weight: 700;
-          flex-shrink: 0; margin-top: 1px;
+          font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px;
         }
         .ai-step__text { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
 
-        /* ── FORM FIELDS ── */
-        .form-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-          gap: 16px;
-        }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
         .form-field label {
-          display: block;
-          font-size: 12.5px;
-          font-weight: 600;
-          color: var(--text-secondary);
-          margin-bottom: 6px;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
+          display: block; font-size: 12.5px; font-weight: 600;
+          color: var(--text-secondary); margin-bottom: 6px;
+          text-transform: uppercase; letter-spacing: 0.04em;
         }
-        .form-field input,
-        .form-field select,
-        .form-field textarea {
-          width: 100%;
-          padding: 10px 12px;
-          border: 1.5px solid var(--border);
-          border-radius: var(--radius-sm);
-          font-size: 13.5px;
-          font-family: 'Plus Jakarta Sans', sans-serif;
-          background: var(--surface);
-          color: var(--text-primary);
+        .form-field input, .form-field select, .form-field textarea {
+          width: 100%; padding: 10px 12px;
+          border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+          font-size: 13.5px; font-family: 'Plus Jakarta Sans', sans-serif;
+          background: var(--surface); color: var(--text-primary);
           transition: border-color 0.15s, box-shadow 0.15s;
         }
-        .form-field input:focus,
-        .form-field select:focus,
-        .form-field textarea:focus {
-          outline: none;
-          border-color: var(--primary-mid);
+        .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
+          outline: none; border-color: var(--primary-mid);
           box-shadow: 0 0 0 3px rgba(27,108,168,0.1);
         }
 
-        /* ── SEARCH ── */
         .search-wrap { position: relative; }
         .search-box {
           display: flex; align-items: center;
           border: 2px solid var(--primary-mid);
           border-radius: var(--radius-sm);
-          background: var(--surface);
-          overflow: hidden;
+          background: var(--surface); overflow: hidden;
           transition: box-shadow 0.15s;
         }
         .search-box:focus-within { box-shadow: 0 0 0 3px rgba(27,108,168,0.12); }
         .search-icon { padding: 0 12px; color: var(--primary-mid); font-size: 15px; }
         .search-input {
-          flex: 1;
-          padding: 11px 0;
-          border: none !important;
-          outline: none !important;
-          font-size: 14px !important;
-          font-family: 'Plus Jakarta Sans', sans-serif !important;
-          background: transparent !important;
-          box-shadow: none !important;
+          flex: 1; padding: 11px 0;
+          border: none !important; outline: none !important;
+          font-size: 14px !important; font-family: 'Plus Jakarta Sans', sans-serif !important;
+          background: transparent !important; box-shadow: none !important;
         }
-        .search-clear {
-          padding: 0 12px;
-          background: none;
-          border: none;
-          font-size: 18px;
-          color: var(--text-muted);
-          cursor: pointer;
-        }
+        .search-clear { padding: 0 12px; background: none; border: none; font-size: 18px; color: var(--text-muted); cursor: pointer; }
         .search-dropdown {
-          position: absolute;
-          top: calc(100% + 4px); left: 0; right: 0;
-          background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: var(--radius);
-          box-shadow: var(--shadow-md);
-          z-index: 1000;
-          max-height: 290px;
-          overflow-y: auto;
+          position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+          background: var(--surface); border: 1px solid var(--border);
+          border-radius: var(--radius); box-shadow: var(--shadow-md);
+          z-index: 1000; max-height: 290px; overflow-y: auto;
         }
         .search-empty { padding: 14px 16px; color: var(--text-muted); font-size: 13px; }
         .search-item {
-          padding: 10px 14px;
-          cursor: pointer;
+          padding: 10px 14px; cursor: pointer;
           border-bottom: 1px solid var(--surface-3);
           display: flex; align-items: center; gap: 10px;
           transition: background 0.1s;
@@ -1441,13 +1492,8 @@ export default function FormLRAPage() {
         .search-item:hover, .search-item--active { background: var(--primary-light); }
         .search-item:last-child { border-bottom: none; }
         .region-badge {
-          font-size: 10px;
-          font-weight: 700;
-          padding: 2px 7px;
-          border-radius: 20px;
-          color: #fff;
-          flex-shrink: 0;
-          letter-spacing: 0.04em;
+          font-size: 10px; font-weight: 700; padding: 2px 7px;
+          border-radius: 20px; color: #fff; flex-shrink: 0; letter-spacing: 0.04em;
         }
         .search-item__name { font-weight: 600; font-size: 13.5px; }
         .search-item__prov { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
@@ -1455,40 +1501,25 @@ export default function FormLRAPage() {
         .selected-region {
           display: inline-flex; align-items: center; gap: 6px;
           margin-top: 8px; padding: 6px 12px;
-          background: var(--success-light);
-          border: 1px solid var(--success-border);
-          border-radius: 20px;
-          font-size: 13px; font-weight: 600; color: var(--success);
+          background: var(--success-light); border: 1px solid var(--success-border);
+          border-radius: 20px; font-size: 13px; font-weight: 600; color: var(--success);
         }
         .search-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
 
-        /* ── RUPIAH INPUT ── */
         .rupiah-input {
-          width: 100%;
-          padding: 8px 10px;
-          border: 1.5px solid var(--border);
-          border-radius: var(--radius-sm);
-          font-size: 13px;
-          font-family: 'DM Mono', monospace;
-          text-align: right;
-          background: var(--surface);
-          color: var(--text-primary);
+          width: 100%; padding: 8px 10px;
+          border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+          font-size: 13px; font-family: 'DM Mono', monospace;
+          text-align: right; background: var(--surface); color: var(--text-primary);
           transition: border-color 0.15s, box-shadow 0.15s;
         }
-        .rupiah-input:focus {
-          outline: none;
-          border-color: var(--primary-mid);
-          box-shadow: 0 0 0 3px rgba(27,108,168,0.1);
-        }
+        .rupiah-input:focus { outline: none; border-color: var(--primary-mid); box-shadow: 0 0 0 3px rgba(27,108,168,0.1); }
         .rupiah-input::placeholder { color: var(--text-muted); }
 
-        /* ── BUTTONS ── */
         .btn {
           display: inline-flex; align-items: center; gap: 6px;
-          padding: 9px 16px;
-          border: none; border-radius: var(--radius-sm);
-          font-size: 13px; font-weight: 600;
-          font-family: 'Plus Jakarta Sans', sans-serif;
+          padding: 9px 16px; border: none; border-radius: var(--radius-sm);
+          font-size: 13px; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif;
           cursor: pointer; transition: all 0.15s;
         }
         .btn--primary { background: var(--primary-mid); color: #fff; }
@@ -1503,33 +1534,22 @@ export default function FormLRAPage() {
         .btn--orange:hover { background: #d97706; }
         .btn--ai { background: var(--ai-primary); color: #fff; }
         .btn--ai:hover { background: #5b21b6; }
-        .btn--outline-ai {
-          background: transparent; color: var(--ai-primary);
-          border: 1.5px solid var(--ai-primary);
-        }
+        .btn--outline-ai { background: transparent; color: var(--ai-primary); border: 1.5px solid var(--ai-primary); }
         .btn--outline-ai:hover { background: var(--ai-light); }
-        .btn--outline-blue {
-          background: transparent; color: var(--primary-mid);
-          border: 1.5px solid var(--primary-mid);
-        }
+        .btn--outline-blue { background: transparent; color: var(--primary-mid); border: 1.5px solid var(--primary-mid); }
         .btn--outline-blue:hover { background: var(--primary-light); }
         .btn--disabled { background: #e2e8f0 !important; color: var(--text-muted) !important; cursor: not-allowed !important; }
         .btn--large { padding: 12px 28px; font-size: 14px; }
 
-        /* ── KATEGORI HEADER ── */
         .kat-header {
-          padding: 13px 18px;
-          border-radius: var(--radius-sm);
-          margin-bottom: 16px;
-          font-size: 14px; font-weight: 700;
-          display: flex; align-items: center; gap: 10px;
-          color: #fff;
+          padding: 13px 18px; border-radius: var(--radius-sm);
+          margin-bottom: 16px; font-size: 14px; font-weight: 700;
+          display: flex; align-items: center; gap: 10px; color: #fff;
         }
         .kat-header--pendapatan { background: linear-gradient(90deg, #0d6b9a, #1b6ca8); }
         .kat-header--belanja { background: linear-gradient(90deg, #1a6b3c, #2d9b58); }
         .kat-header--pembiayaan { background: linear-gradient(90deg, #7a4e00, #c07a10); }
 
-        /* ── SECTION HEADER ── */
         .section-header-row {
           display: flex; justify-content: space-between; align-items: center;
           margin-bottom: 10px; flex-wrap: wrap; gap: 8px;
@@ -1539,65 +1559,37 @@ export default function FormLRAPage() {
           border-left: 4px solid var(--primary-mid);
           padding: 9px 14px;
           border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-          font-size: 13.5px; font-weight: 700; color: var(--primary);
-          flex: 1;
+          font-size: 13.5px; font-weight: 700; color: var(--primary); flex: 1;
         }
 
-        /* ── LRA TABLE ── */
         .lra-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 13.5px;
-          margin-bottom: 10px;
-          background: var(--surface);
-          border-radius: var(--radius);
-          overflow: hidden;
-          box-shadow: var(--shadow-sm);
+          width: 100%; border-collapse: collapse;
+          font-size: 13.5px; margin-bottom: 10px;
+          background: var(--surface); border-radius: var(--radius);
+          overflow: hidden; box-shadow: var(--shadow-sm);
         }
-        .lra-table thead tr {
-          background: var(--surface-3);
-        }
+        .lra-table thead tr { background: var(--surface-3); }
         .lra-table th {
-          padding: 10px 12px;
-          text-align: left;
+          padding: 10px 12px; text-align: left;
           border-bottom: 2px solid var(--border);
-          font-size: 12px;
-          font-weight: 700;
-          color: var(--text-secondary);
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
+          font-size: 12px; font-weight: 700; color: var(--text-secondary);
+          text-transform: uppercase; letter-spacing: 0.05em;
         }
         .lra-table th:last-child { text-align: center; }
 
         .td-kode {
-          padding: 9px 12px;
-          border-bottom: 1px solid var(--border);
-          font-family: 'DM Mono', monospace;
-          font-size: 12px;
-          white-space: nowrap;
-          color: var(--text-secondary);
-          width: 14%;
+          padding: 9px 12px; border-bottom: 1px solid var(--border);
+          font-family: 'DM Mono', monospace; font-size: 12px;
+          white-space: nowrap; color: var(--text-secondary); width: 14%;
         }
         .td-kode--sub { padding-left: 28px; color: var(--text-muted); }
-        .td-uraian {
-          padding: 9px 12px;
-          border-bottom: 1px solid var(--border);
-          width: 32%;
-        }
+        .td-uraian { padding: 9px 12px; border-bottom: 1px solid var(--border); width: 32%; }
         .td-uraian--sub { color: var(--text-secondary); font-size: 13px; }
-        .td-input {
-          padding: 6px 10px;
-          border-bottom: 1px solid var(--border);
-          width: 21%;
-        }
+        .td-input { padding: 6px 10px; border-bottom: 1px solid var(--border); width: 21%; }
         .td-pct {
-          padding: 9px 12px;
-          border-bottom: 1px solid var(--border);
-          text-align: center;
-          font-weight: 700;
-          font-family: 'DM Mono', monospace;
-          font-size: 13px;
-          width: 10%;
+          padding: 9px 12px; border-bottom: 1px solid var(--border);
+          text-align: center; font-weight: 700;
+          font-family: 'DM Mono', monospace; font-size: 13px; width: 10%;
         }
 
         .tr-item:hover { background: #fafbfc; }
@@ -1609,35 +1601,20 @@ export default function FormLRAPage() {
         .uraian-main { font-weight: 600; color: var(--primary); }
         .uraian-hint { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
         .subtotal-hint { font-size: 11px; color: var(--text-muted); text-align: right; margin-top: 3px; font-family: 'DM Mono', monospace; }
+        .expand-btn { background: none; border: none; cursor: pointer; font-size: 11px; padding: 0; margin-right: 6px; color: var(--primary-mid); }
 
-        .expand-btn {
-          background: none; border: none; cursor: pointer;
-          font-size: 11px; padding: 0; margin-right: 6px;
-          color: var(--primary-mid);
-        }
-
-        /* ── TOTALS ROW ── */
-        .tr-total {
-          background: #fffaeb;
-          font-weight: 700;
-        }
+        .tr-total { background: #fffaeb; font-weight: 700; }
         .tr-total td {
           padding: 10px 12px;
-          border-bottom: 2px solid #fde68a;
-          border-top: 2px solid #fde68a;
-          font-size: 13px;
+          border-bottom: 2px solid #fde68a; border-top: 2px solid #fde68a; font-size: 13px;
         }
         .tr-total .td-input { text-align: right; font-family: 'DM Mono', monospace; color: var(--primary); }
         .tr-total .td-pct { color: var(--warning) !important; }
 
-        /* ── KATEGORI TOTAL ── */
         .kat-total {
-          background: var(--surface-3);
-          border: 1px solid var(--border-mid);
-          border-radius: var(--radius);
-          padding: 14px 18px;
-          margin-top: 12px;
-          margin-bottom: 8px;
+          background: var(--surface-3); border: 1px solid var(--border-mid);
+          border-radius: var(--radius); padding: 14px 18px;
+          margin-top: 12px; margin-bottom: 8px;
           display: flex; justify-content: space-between; align-items: center;
           flex-wrap: wrap; gap: 12px;
         }
@@ -1647,109 +1624,69 @@ export default function FormLRAPage() {
         .kat-total__stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
         .kat-total__stat-val { font-size: 14px; font-weight: 700; font-family: 'DM Mono', monospace; }
 
-        /* ── GRAND TOTAL ── */
         .grand-total {
           background: linear-gradient(135deg, #f0fdf4, #dcfce7);
-          border: 2px solid #4ade80;
-          border-radius: var(--radius);
-          padding: 20px 24px;
-          margin-top: 24px; margin-bottom: 24px;
+          border: 2px solid #4ade80; border-radius: var(--radius);
+          padding: 20px 24px; margin-top: 24px; margin-bottom: 24px;
         }
         .grand-total__title { font-size: 15px; font-weight: 800; color: var(--success); margin: 0 0 16px 0; }
         .grand-total__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
         .grand-total__stat-label { font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
         .grand-total__stat-val { font-size: 20px; font-weight: 800; font-family: 'DM Mono', monospace; }
 
-        /* ── PASTE ZONE ── */
         .paste-zone {
-          background: #fffbf2;
-          border: 2px solid #fed7aa;
-          border-radius: var(--radius-sm);
-          padding: 14px;
-          margin-bottom: 12px;
+          background: #fffbf2; border: 2px solid #fed7aa;
+          border-radius: var(--radius-sm); padding: 14px; margin-bottom: 12px;
         }
         .paste-zone textarea {
-          width: 100%;
-          min-height: 120px;
-          padding: 10px;
-          border: 1.5px solid #fed7aa;
-          border-radius: var(--radius-sm);
-          font-size: 12.5px;
-          font-family: 'DM Mono', monospace;
-          margin-bottom: 10px;
-          background: #fff;
-          color: var(--text-primary);
-          resize: vertical;
+          width: 100%; min-height: 120px; padding: 10px;
+          border: 1.5px solid #fed7aa; border-radius: var(--radius-sm);
+          font-size: 12.5px; font-family: 'DM Mono', monospace;
+          margin-bottom: 10px; background: #fff; color: var(--text-primary); resize: vertical;
         }
         .paste-zone textarea:focus { outline: none; border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,0.1); }
         .paste-hint { font-size: 12px; color: var(--text-secondary); margin: 0 0 10px; line-height: 1.6; }
 
-        /* ── FILE UPLOAD CARD ── */
         .file-upload-label {
           display: inline-flex; align-items: center; gap: 6px;
-          padding: 9px 16px;
-          background: var(--primary-mid); color: #fff;
-          border-radius: var(--radius-sm);
-          font-size: 13px; font-weight: 600; cursor: pointer;
+          padding: 9px 16px; background: var(--primary-mid); color: #fff;
+          border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer;
           transition: background 0.15s;
         }
         .file-upload-label:hover { background: var(--primary); }
         .file-preview {
-          margin-top: 12px;
-          background: var(--surface-3);
-          padding: 10px 12px;
-          border-radius: var(--radius-sm);
-          font-size: 11.5px;
-          font-family: 'DM Mono', monospace;
-          overflow-x: auto;
-          max-height: 150px;
-          overflow-y: auto;
-          color: var(--text-secondary);
+          margin-top: 12px; background: var(--surface-3);
+          padding: 10px 12px; border-radius: var(--radius-sm);
+          font-size: 11.5px; font-family: 'DM Mono', monospace;
+          overflow-x: auto; max-height: 150px; overflow-y: auto; color: var(--text-secondary);
         }
 
-        /* ── MESSAGE ── */
         .message-bar {
-          text-align: center;
-          padding: 12px 16px;
-          border-radius: var(--radius-sm);
-          margin-bottom: 16px;
+          text-align: center; padding: 12px 16px;
+          border-radius: var(--radius-sm); margin-bottom: 16px;
           font-weight: 600; font-size: 13.5px;
         }
         .message-bar--success { background: var(--success-light); color: var(--success); border: 1px solid var(--success-border); }
         .message-bar--error { background: var(--danger-light); color: var(--danger); border: 1px solid #fca5a5; }
 
-        /* ── ACTIONS ── */
         .form-actions {
           display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;
           padding-top: 8px;
         }
 
-        /* ── API KEY STATUS ── */
         .api-key-status {
           display: inline-flex; align-items: center; gap: 6px;
-          font-size: 12px; color: #059669; font-weight: 600;
-          margin-bottom: 12px;
+          font-size: 12px; color: #059669; font-weight: 600; margin-bottom: 12px;
         }
 
-        /* ── MOBILE CARDS ── */
         .mobile-card {
-          border: 1px solid var(--border);
-          border-radius: var(--radius);
-          margin-bottom: 10px;
-          padding: 12px 14px;
-          background: var(--surface);
-          box-shadow: var(--shadow-sm);
+          border: 1px solid var(--border); border-radius: var(--radius);
+          margin-bottom: 10px; padding: 12px 14px;
+          background: var(--surface); box-shadow: var(--shadow-sm);
         }
         .mobile-card--group { padding: 0; overflow: hidden; }
-        .mobile-card__header {
-          padding: 12px 14px;
-          background: var(--primary-light);
-          border-bottom: 1px solid var(--primary-border);
-        }
-        .mobile-card__header--expandable {
-          cursor: pointer;
-          display: flex; justify-content: space-between; align-items: flex-start;
-        }
+        .mobile-card__header { padding: 12px 14px; background: var(--primary-light); border-bottom: 1px solid var(--primary-border); }
+        .mobile-card__header--expandable { cursor: pointer; display: flex; justify-content: space-between; align-items: flex-start; }
         .mobile-card__body { padding: 12px 14px; background: #fafcff; border-bottom: 1px solid var(--border); }
         .mobile-card__sub { padding: 12px 14px; background: var(--surface); border-top: 1px solid var(--border); }
         .mobile-card__title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
@@ -1758,12 +1695,8 @@ export default function FormLRAPage() {
         .expand-icon { font-size: 11px; color: var(--primary-mid); flex-shrink: 0; margin-top: 2px; }
 
         .kode-badge {
-          display: inline-block;
-          font-family: 'DM Mono', monospace;
-          font-size: 10.5px;
-          padding: 2px 7px;
-          border-radius: 4px;
-          font-weight: 500;
+          display: inline-block; font-family: 'DM Mono', monospace;
+          font-size: 10.5px; padding: 2px 7px; border-radius: 4px; font-weight: 500;
         }
         .kode-badge--blue { background: var(--primary-light); color: var(--primary); border: 1px solid var(--primary-border); }
         .kode-badge--gray { background: var(--surface-3); color: var(--text-secondary); border: 1px solid var(--border); }
@@ -1772,53 +1705,32 @@ export default function FormLRAPage() {
         .field-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
         .field-label--blue { font-size: 11px; color: var(--primary); font-weight: 700; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
 
-        .pct-badge {
-          text-align: right;
-          font-family: 'DM Mono', monospace;
-          font-size: 13px;
-          font-weight: 700;
-          margin-top: 4px;
-        }
+        .pct-badge { text-align: right; font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 700; margin-top: 4px; }
         .pct-badge--ok { color: var(--success); }
         .pct-badge--over { color: var(--danger); }
         .pct-badge--zero { color: var(--warning); }
 
-        /* ── MOBILE TOTAL ── */
         .mobile-total {
-          background: #fffaeb;
-          border: 2px solid #fde68a;
-          border-radius: var(--radius);
-          padding: 12px 14px;
-          margin-bottom: 10px;
+          background: #fffaeb; border: 2px solid #fde68a;
+          border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px;
         }
         .mobile-total__title { font-weight: 700; font-size: 13px; color: var(--warning); margin-bottom: 8px; }
         .mobile-total__grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; }
         .mobile-total__key { color: var(--text-muted); }
         .mobile-total__val { font-family: 'DM Mono', monospace; font-weight: 600; }
 
-        /* ── SECTION PASTE ── */
         .section-paste-zone {
-          background: var(--primary-light);
-          border: 2px solid var(--primary-border);
-          border-radius: var(--radius-sm);
-          padding: 12px;
-          margin-bottom: 12px;
+          background: var(--primary-light); border: 2px solid var(--primary-border);
+          border-radius: var(--radius-sm); padding: 12px; margin-bottom: 12px;
         }
         .section-paste-zone textarea {
-          width: 100%;
-          min-height: 90px;
-          padding: 8px 10px;
-          border: 1.5px solid var(--primary-border);
-          border-radius: var(--radius-sm);
-          font-size: 12px;
-          font-family: 'DM Mono', monospace;
-          margin-bottom: 8px;
-          background: #fff;
-          resize: vertical;
+          width: 100%; min-height: 90px; padding: 8px 10px;
+          border: 1.5px solid var(--primary-border); border-radius: var(--radius-sm);
+          font-size: 12px; font-family: 'DM Mono', monospace;
+          margin-bottom: 8px; background: #fff; resize: vertical;
         }
         .section-paste-zone textarea:focus { outline: none; border-color: var(--primary-mid); box-shadow: 0 0 0 3px rgba(27,108,168,0.1); }
 
-        /* ── RESPONSIVE ── */
         @media (max-width: 768px) {
           .lra-table-desktop { display: none !important; }
           .lra-cards-mobile { display: block !important; }
@@ -1833,16 +1745,28 @@ export default function FormLRAPage() {
         .lra-cards-mobile { display: none; }
       `}</style>
 
+      {/* ── SUCCESS MODAL ── */}
+      <SuccessModal
+        show={successInfo.show}
+        daerah={successInfo.daerah}
+        sheet={successInfo.sheet}
+        itemsCount={successInfo.itemsCount}
+        timestamp={successInfo.timestamp}
+        onClose={() => setSuccessInfo(prev => ({ ...prev, show: false }))}
+        onReset={handleReset}
+      />
+
+      {/* Hidden iframe — menangkap POST response agar halaman tidak redirect */}
+      <iframe name="hidden_submit_frame" style={{ display: 'none' }} title="hidden-frame" />
+
       <div className="lra-page">
         {/* HEADER */}
         <div className="page-header">
-          {/* Decorative background shapes */}
           <div className="page-header__bg-circle page-header__bg-circle--1" />
           <div className="page-header__bg-circle page-header__bg-circle--2" />
           <div className="page-header__bg-circle page-header__bg-circle--3" />
 
           <div className="page-header__inner">
-            {/* Logo Kemendagri dari /public/logokemendagri.png */}
             <div className="page-header__logo-wrap">
               <img
                 src="/logokemendagri.png"
@@ -1850,22 +1774,12 @@ export default function FormLRAPage() {
                 style={{ width: LOGO_CONFIG.header.width, height: LOGO_CONFIG.header.height, objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.35))' }}
               />
             </div>
-
-            {/* Text identity */}
             <div className="page-header__identity">
-              <div className="page-header__ministry-name">
-                KEMENTERIAN DALAM NEGERI
-              </div>
-              <div className="page-header__ministry-sub">
-                REPUBLIK INDONESIA
-              </div>
+              <div className="page-header__ministry-name">KEMENTERIAN DALAM NEGERI</div>
+              <div className="page-header__ministry-sub">REPUBLIK INDONESIA</div>
               <div className="page-header__divider" />
-              <div className="page-header__ditjen">
-                Direktorat Jenderal Bina Keuangan Daerah
-              </div>
+              <div className="page-header__ditjen">Direktorat Jenderal Bina Keuangan Daerah</div>
             </div>
-
-            {/* Right: document title */}
             <div className="page-header__doc">
               <div className="page-header__doc-label">FORMULIR INPUT</div>
               <h1 className="page-header__title">Laporan Realisasi Anggaran</h1>
@@ -1918,7 +1832,7 @@ export default function FormLRAPage() {
                 </div>
               </>)}
               {isAiProcessing && (<>
-                <div className="ai-drop-zone__icon" style={{ animation:'spin 1s linear infinite', display:'inline-block' }}>⚙️</div>
+                <div className="ai-drop-zone__icon">⚙️</div>
                 <div className="ai-drop-zone__title">AI sedang menganalisis...</div>
               </>)}
               {aiResult && !isAiProcessing && (<>
@@ -1966,18 +1880,18 @@ export default function FormLRAPage() {
           {/* INFO DAERAH */}
           <div className="card">
             <div className="info-daerah-header">
-              <div className="info-daerah-header__logo">
+              <div style={{ flexShrink: 0 }}>
                 <img
                   src="/logokemendagri.png"
                   alt="Logo Kemendagri"
                   style={{ width: LOGO_CONFIG.infoDaerah.width, height: LOGO_CONFIG.infoDaerah.height, objectFit: 'contain', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' }}
                 />
               </div>
-              <div className="info-daerah-header__text">
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="info-daerah-header__title">Identitas Daerah Pelapor</div>
                 <div className="info-daerah-header__desc">Lengkapi data wilayah, tahun anggaran, dan penanggung jawab laporan LRA</div>
               </div>
-              <div className="info-daerah-header__stamp">
+              <div style={{ flexShrink: 0 }} className="info-daerah-header__stamp">
                 <div className="info-daerah-header__stamp-inner">
                   <div className="info-daerah-header__stamp-line1">WAJIB DIISI</div>
                   <div className="info-daerah-header__stamp-line2">LENGKAP</div>
