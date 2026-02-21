@@ -81,6 +81,28 @@ const GapLabel = (props: any) => {
   )
 }
 
+/* ── Custom bar shape with minimum pixel height ── */
+const MinBar = (props: any) => {
+  const { x, y, width, height, fill, fillOpacity, radius } = props
+  if (!fill || fill === 'transparent' || fillOpacity === 0) return null
+  const MIN_H  = 6   // minimum bar height in px — always visible
+  const realH  = Math.max(height ?? 0, MIN_H)
+  const realY  = y + (height ?? 0) - realH   // anchor to baseline
+  const r      = Math.min(radius?.[0] ?? 3, realH / 2)
+  return (
+    <rect
+      x={x}
+      y={realY}
+      width={width}
+      height={realH}
+      rx={r}
+      ry={r}
+      fill={fill}
+      fillOpacity={fillOpacity ?? 0.9}
+    />
+  )
+}
+
 export default function ComparisonBarChart({
   data, metric, rataRata, title, subtitle, kategori
 }: ComparisonBarChartProps) {
@@ -184,7 +206,7 @@ export default function ComparisonBarChart({
               fontWeight: 700,
             }}
           />
-          <Bar dataKey="value" radius={[3, 3, 0, 0]} maxBarSize={42} isAnimationActive={true}>
+          <Bar dataKey="value" radius={[3, 3, 0, 0]} maxBarSize={42} isAnimationActive={true} shape={<MinBar />}>
             {chartData.map((entry, i) => (
               <Cell
                 key={i}
