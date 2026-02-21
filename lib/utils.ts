@@ -227,6 +227,8 @@ export function extractLRAData(
     if (['', 'NO.', 'NO', 'DAERAH', 'TOTAL', 'JUMLAH', 'NASIONAL', 'INDONESIA']
       .includes(daerah.toUpperCase())) continue
     if (daerah.replace(/\./g, '').match(/^\d+$/)) continue
+// Tambahkan: skip angka romawi (nomor urut provinsi)
+if (/^(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV|XVI|XVII|XVIII|XIX|XX|XXI|XXII|XXIII|XXIV|XXV|XXVI|XXVII|XXVIII|XXIX|XXX|XXXI|XXXII|XXXIII|XXXIV|XXXV|XXXVI|XXXVII|XXXVIII)$/.test(daerah.toUpperCase().trim())) continue
 
     const jenis = classifyDaerah(daerah)
     if (jenis === null) continue
@@ -237,7 +239,10 @@ export function extractLRAData(
     const realisasiBelanja    = parseNumeric(row[idxRealB])
 
     if (anggaranPendapatan === 0 && realisasiPendapatan === 0 &&
-        anggaranBelanja === 0 && realisasiBelanja === 0) continue
+    anggaranBelanja === 0 && realisasiBelanja === 0) {
+  console.warn('Skip (semua 0):', daerah)
+  continue
+}
 
     rows.push({
       daerah,
