@@ -5,16 +5,52 @@ import { extractLRAData, autoDetectCols } from '@/lib/utils'
 const DEFAULT_SHEET_URL  = 'https://docs.google.com/spreadsheets/d/13znDQlUkXtUvfkq7xpRSjKEcP5JAq-mKuz2SQKmPZGY/edit?usp=sharing'
 const DEFAULT_SHEET_NAME = 'Rekap LRA 2026 (agregat)'
 
-// Sheet khusus tren — opsional, jika tidak ada pakai simulasi
-const TREND_SHEET_NAMES = [
-  'Tren LRA',
-  'Trend LRA',
-  'Tren Realisasi',
-  'Data Tren',
-]
+// Nama sheet yang dicari untuk data historis
+// Cocokkan dengan nama sheet di spreadsheet Anda
+const SHEET_PATTERNS = {
+  jan2026:  ['jan 2026', 'januari 2026', 'rekap lra jan', 'lra jan 2026', 'lra 2026 jan'],
+  feb2025:  ['feb 2025', 'februari 2025', 'rekap lra feb 2025', 'lra feb 2025', 'lra 2025 feb', '2025 (agregat)', 'rekap lra 2025'],
+  jan2025:  ['jan 2025', 'januari 2025', 'rekap lra jan 2025', 'lra jan 2025', 'lra 2025 jan'],
+}
 
 export const revalidate = 0
 export const dynamic = 'force-dynamic'
+
+/* ── Helper: cari sheet berdasarkan pattern ── */
+function findSheet(sheets: { title: string; index: number }[], patterns: string[]) {
+  return sheets.find(s =>
+    patterns.some(p => s.title.toLowerCase().includes(p.toLowerCase()))
+  ) ?? null
+}
+
+/* ── Helper: ambil & parse LRA dari sheet, hitung agregat ── */
+async function fetchAgregat(
+  url: string,
+  sheetIndex: number,
+  jenis: string | null
+): Promise<{ persen: number; triliun: number } | null> {
+  try {
+    const raw  = await getSheetData(url, sheetIndex)
+    const cols = autoDetectCols(raw) ?? { penerimaanAng: 75, penerimaanReal: 76, pengeluaranAng: 133, pengeluaranReal: 134 }
+    const rows = extractLRAData(raw, cols)
+    const filtered = jenis ? rows.filter(r => r.jenis === jenis) : rows
+    if (!filtered.length) return null
+
+    const totalAng  = filtered.reduce((s, r) => s + r.anggaranPendapatan, 0)
+    const totalReal = filtered.reduce((s, r) => s + r.realisasiPendapatan, 0)
+    const totalAngB = filtered.reduce((s, r) => s + r.anggaranBelanja, 0)
+    const totalRealB = filtered.reduce((s, r) => s + r.realisasiBelanja, 0)
+
+    return {
+      persen:   totalAng  > 0 ? parseFloat(((totalReal  / totalAng)  * 100).toFixed(2)) : 0,
+      triliun:  parseFloat((totalReal / 1e12).toFixed(2)),
+      persenBelanja: totalAngB > 0 ? parseFloat(((totalRealB / totalAngB) * 100).toFixed(2)) : 0,
+      triliunBelanja: parseFloat((totalRealB / 1e12).toFixed(2)),
+    } as any
+  } catch {
+    return null
+  }
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
@@ -34,61 +70,69 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── Data tren historis ───────────────────────────────────────────────────
+  // ── Data tren: ambil dari sheet historis ─────────────────────────────────
   if (action === 'trend') {
     try {
-      const sheets = await getAvailableSheets(url)
+      const sheets    = await getAvailableSheets(url)
+      const sheetList = sheets.map(s => s.title)
 
-      // Cari sheet tren berdasarkan nama-nama yang mungkin
-      const trendSheet = sheets.find(s =>
-        TREND_SHEET_NAMES.some(name =>
-          s.title.toLowerCase().includes(name.toLowerCase())
-        )
-      )
+      // Feb 2026 — sheet utama (sudah pasti ada)
+      const mainSheet = sheets.find(s => s.title === DEFAULT_SHEET_NAME) ?? sheets[0]
 
-      if (!trendSheet) {
-        // Tidak ada sheet tren — kembalikan flag agar client pakai simulasi
-        return NextResponse.json(
-          { hasTrendSheet: false, data: null },
-          { headers: { 'Cache-Control': 'no-store' } }
-        )
+      // Cari sheet historis
+      const sheetJan26 = findSheet(sheets, SHEET_PATTERNS.jan2026)
+      const sheetFeb25 = findSheet(sheets, SHEET_PATTERNS.feb2025)
+      const sheetJan25 = findSheet(sheets, SHEET_PATTERNS.jan2025)
+
+      // Jenis yang dibutuhkan
+      const JENIS = [null, 'Provinsi', 'Kabupaten', 'Kota'] as const
+
+      // Fetch Feb 2026 dari sheet utama
+      const feb26Raw  = await getSheetData(url, mainSheet.index)
+      const feb26Cols = autoDetectCols(feb26Raw) ?? { penerimaanAng: 75, penerimaanReal: 76, pengeluaranAng: 133, pengeluaranReal: 134 }
+      const feb26Rows = extractLRAData(feb26Raw, feb26Cols)
+
+      function getAgregat(rows: typeof feb26Rows, jenis: string | null) {
+        const filtered = jenis ? rows.filter(r => r.jenis === jenis) : rows
+        if (!filtered.length) return null
+        const totalAngP  = filtered.reduce((s, r) => s + r.anggaranPendapatan,  0)
+        const totalRealP = filtered.reduce((s, r) => s + r.realisasiPendapatan, 0)
+        const totalAngB  = filtered.reduce((s, r) => s + r.anggaranBelanja,     0)
+        const totalRealB = filtered.reduce((s, r) => s + r.realisasiBelanja,    0)
+        return {
+          persenPendapatan:   totalAngP > 0 ? parseFloat(((totalRealP / totalAngP) * 100).toFixed(2)) : 0,
+          nilaiPendapatanT:   parseFloat((totalRealP / 1e12).toFixed(2)),
+          persenBelanja:      totalAngB > 0 ? parseFloat(((totalRealB / totalAngB) * 100).toFixed(2)) : 0,
+          nilaiBelanjaTrilun: parseFloat((totalRealB / 1e12).toFixed(2)),
+        }
       }
 
-      // Ada sheet tren — ambil data
-      const rawTrend = await getSheetData(url, trendSheet.index)
+      // Fetch sheet historis (parallel)
+      const [jan26RowsRaw, feb25RowsRaw, jan25RowsRaw] = await Promise.all([
+        sheetJan26 ? getSheetData(url, sheetJan26.index).then(r => extractLRAData(r, autoDetectCols(r) ?? feb26Cols)) : Promise.resolve(null),
+        sheetFeb25 ? getSheetData(url, sheetFeb25.index).then(r => extractLRAData(r, autoDetectCols(r) ?? feb26Cols)) : Promise.resolve(null),
+        sheetJan25 ? getSheetData(url, sheetJan25.index).then(r => extractLRAData(r, autoDetectCols(r) ?? feb26Cols)) : Promise.resolve(null),
+      ])
 
-      // Parse: baris pertama = header, baris berikutnya = data
-      // Format yang diharapkan di sheet:
-      // Bulan | Tahun | Jenis | PersenPendapatan | NilaiPendapatanTriliun | PersenBelanja | NilaiBelanjaTrilun
-      const headers = rawTrend[0]?.map((h: string) => h?.toString().toLowerCase().trim()) ?? []
+      // Susun data per jenis
+      const result = JENIS.map(jenis => ({
+        jenis: jenis ?? 'Semua',
+        jan2025: jan25RowsRaw ? getAgregat(jan25RowsRaw, jenis) : null,
+        feb2025: feb25RowsRaw ? getAgregat(feb25RowsRaw, jenis) : null,
+        jan2026: jan26RowsRaw ? getAgregat(jan26RowsRaw, jenis) : null,
+        feb2026: getAgregat(feb26Rows, jenis), // selalu ada
+      }))
 
-      const findCol = (keywords: string[]) =>
-        headers.findIndex((h: string) => keywords.some(k => h.includes(k)))
+      return NextResponse.json({
+        sheetsFound: {
+          jan2026: sheetJan26?.title ?? null,
+          feb2025: sheetFeb25?.title ?? null,
+          jan2025: sheetJan25?.title ?? null,
+        },
+        allSheets: sheetList,
+        data: result,
+      }, { headers: { 'Cache-Control': 'no-store' } })
 
-      const colBulan   = findCol(['bulan', 'month', 'periode'])
-      const colTahun   = findCol(['tahun', 'year', 'ta'])
-      const colJenis   = findCol(['jenis', 'kategori', 'type'])
-      const colPctPend = findCol(['persen_pendapatan', 'pct_pendapatan', '% pendapatan', 'realisasi pendapatan'])
-      const colValPend = findCol(['nilai_pendapatan', 'pendapatan_t', 'pendapatan triliun'])
-      const colPctBel  = findCol(['persen_belanja', 'pct_belanja', '% belanja', 'realisasi belanja'])
-      const colValBel  = findCol(['nilai_belanja', 'belanja_t', 'belanja triliun'])
-
-      const trendRows = rawTrend.slice(1)
-        .filter((row: any[]) => row[colBulan])
-        .map((row: any[]) => ({
-          bulan:               row[colBulan]   ?? '',
-          tahun:               row[colTahun]   ?? '',
-          jenis:               row[colJenis]   ?? 'Semua',
-          persenPendapatan:    parseFloat(row[colPctPend]) || 0,
-          nilaiPendapatanT:    parseFloat(row[colValPend]) || null,
-          persenBelanja:       parseFloat(row[colPctBel])  || 0,
-          nilaiBelanjaTrilun:  parseFloat(row[colValBel])  || null,
-        }))
-
-      return NextResponse.json(
-        { hasTrendSheet: true, sheetName: trendSheet.title, data: trendRows },
-        { headers: { 'Cache-Control': 'no-store' } }
-      )
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Gagal memuat data tren'
       return NextResponse.json({ error: message }, { status: 500 })
@@ -101,36 +145,24 @@ export async function GET(req: NextRequest) {
 
     if (worksheetIndex < 0 || !searchParams.get('sheetIndex')) {
       const sheetName = searchParams.get('sheetName') ?? DEFAULT_SHEET_NAME
-      const sheets = await getAvailableSheets(url)
-      const found  = sheets.find(s => s.title === sheetName)
-      worksheetIndex = found?.index ?? 0
+      const sheets    = await getAvailableSheets(url)
+      const found     = sheets.find(s => s.title === sheetName)
+      worksheetIndex  = found?.index ?? 0
     }
 
     const rawData = await getSheetData(url, worksheetIndex)
-
-    let cols: { penerimaanAng: number; penerimaanReal: number; pengeluaranAng: number; pengeluaranReal: number }
 
     const manualAng   = searchParams.get('penerimaanAng')
     const manualReal  = searchParams.get('penerimaanReal')
     const manualAngB  = searchParams.get('pengeluaranAng')
     const manualRealB = searchParams.get('pengeluaranReal')
 
-    if (manualAng && manualReal && manualAngB && manualRealB) {
-      cols = {
-        penerimaanAng:   parseInt(manualAng),
-        penerimaanReal:  parseInt(manualReal),
-        pengeluaranAng:  parseInt(manualAngB),
-        pengeluaranReal: parseInt(manualRealB),
-      }
-    } else {
-      const detected = autoDetectCols(rawData)
-      cols = detected ?? {
-        penerimaanAng:   75,
-        penerimaanReal:  76,
-        pengeluaranAng:  133,
-        pengeluaranReal: 134,
-      }
-    }
+    const cols = (manualAng && manualReal && manualAngB && manualRealB) ? {
+      penerimaanAng:   parseInt(manualAng),
+      penerimaanReal:  parseInt(manualReal),
+      pengeluaranAng:  parseInt(manualAngB),
+      pengeluaranReal: parseInt(manualRealB),
+    } : (autoDetectCols(rawData) ?? { penerimaanAng: 75, penerimaanReal: 76, pengeluaranAng: 133, pengeluaranReal: 134 })
 
     const lraData = extractLRAData(rawData, cols)
 

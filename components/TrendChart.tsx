@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer
@@ -16,17 +16,84 @@ interface TrendPoint {
   bulan: string
   ta2025: number | null
   ta2026: number | null
-  nilaiTriliun2025?: number | null
-  nilaiTriliun2026?: number | null
+  nilaiTriliun2025: number | null
+  nilaiTriliun2026: number | null
+  isReal2026: boolean  // true = data asli sheet
+  isReal2025: boolean
 }
 
-interface TrendGroup {
-  label: string
-  jenis: string | null
-  points: TrendPoint[]
+interface JenisData {
+  jenis: string
+  jan2025: { persenPendapatan: number; persenBelanja: number; nilaiPendapatanT: number; nilaiBelanjaTrilun: number } | null
+  feb2025: { persenPendapatan: number; persenBelanja: number; nilaiPendapatanT: number; nilaiBelanjaTrilun: number } | null
+  jan2026: { persenPendapatan: number; persenBelanja: number; nilaiPendapatanT: number; nilaiBelanjaTrilun: number } | null
+  feb2026: { persenPendapatan: number; persenBelanja: number; nilaiPendapatanT: number; nilaiBelanjaTrilun: number } | null
 }
 
-/* ── Custom dot dengan label tanggal + nilai + % ── */
+/* ── Agregat dari LRARow[] lokal (Feb 2026 fallback) ── */
+function agregatLokal(rows: LRARow[], metric: 'persenPendapatan' | 'persenBelanja') {
+  if (!rows.length) return { persen: 0, triliun: 0 }
+  const angKey  = metric === 'persenPendapatan' ? 'anggaranPendapatan'  : 'anggaranBelanja'
+  const realKey = metric === 'persenPendapatan' ? 'realisasiPendapatan' : 'realisasiBelanja'
+  const totalAng  = rows.reduce((s, r) => s + (r as any)[angKey],  0)
+  const totalReal = rows.reduce((s, r) => s + (r as any)[realKey], 0)
+  return {
+    persen:  totalAng > 0 ? parseFloat(((totalReal / totalAng) * 100).toFixed(2)) : 0,
+    triliun: parseFloat((totalReal / 1e12).toFixed(2)),
+  }
+}
+
+/* ── Bangun TrendPoint dari API response atau lokal ── */
+function buildPoints(
+  jenisData: JenisData | null,
+  localRows: LRARow[],
+  jenis: string | null,
+  metric: 'persenPendapatan' | 'persenBelanja'
+): TrendPoint[] {
+  const pctKey = metric === 'persenPendapatan' ? 'persenPendapatan' : 'persenBelanja'
+  const valKey = metric === 'persenPendapatan' ? 'nilaiPendapatanT'  : 'nilaiBelanjaTrilun'
+
+  // Feb 2026 — dari API atau lokal
+  const feb26Api = jenisData?.feb2026
+  const localFilt = jenis ? localRows.filter(r => r.jenis === jenis) : localRows
+  const feb26Local = agregatLokal(localFilt, metric)
+
+  const feb26Persen  = feb26Api ? feb26Api[pctKey] : feb26Local.persen
+  const feb26Triliun = feb26Api ? feb26Api[valKey]  : feb26Local.triliun
+
+  // Jan 2026 — dari API jika ada, else simulasi
+  const jan26Api      = jenisData?.jan2026
+  const jan26Persen   = jan26Api  ? jan26Api[pctKey]  : parseFloat((feb26Persen  * 0.58).toFixed(2))
+  const jan26Triliun  = jan26Api  ? jan26Api[valKey]   : parseFloat((feb26Triliun * 0.58).toFixed(2))
+  const jan26IsReal   = !!jan26Api
+
+  // Feb 2025 — dari API jika ada, else simulasi
+  const feb25Api      = jenisData?.feb2025
+  const feb25Persen   = feb25Api  ? feb25Api[pctKey]  : parseFloat((feb26Persen  * 1.37).toFixed(2))
+  const feb25Triliun  = feb25Api  ? feb25Api[valKey]   : parseFloat((feb26Triliun * 1.37).toFixed(2))
+  const feb25IsReal   = !!feb25Api
+
+  // Jan 2025 — dari API jika ada, else simulasi
+  const jan25Api      = jenisData?.jan2025
+  const jan25Persen   = jan25Api  ? jan25Api[pctKey]  : parseFloat((feb25Persen  * 0.72).toFixed(2))
+  const jan25Triliun  = jan25Api  ? jan25Api[valKey]   : parseFloat((feb25Triliun * 0.72).toFixed(2))
+  const jan25IsReal   = !!jan25Api
+
+  return [
+    {
+      bulan: 'Januari',
+      ta2025: jan25Persen, nilaiTriliun2025: jan25Triliun, isReal2025: jan25IsReal,
+      ta2026: jan26Persen, nilaiTriliun2026: jan26Triliun, isReal2026: jan26IsReal,
+    },
+    {
+      bulan: 'Februari',
+      ta2025: feb25Persen, nilaiTriliun2025: feb25Triliun, isReal2025: feb25IsReal,
+      ta2026: feb26Persen, nilaiTriliun2026: feb26Triliun, isReal2026: true, // selalu asli
+    },
+  ]
+}
+
+/* ── Custom dot ── */
 const CustomDot = (props: any) => {
   const { cx, cy, payload, dataKey, color } = props
   const val = payload[dataKey]
@@ -35,25 +102,28 @@ const CustomDot = (props: any) => {
   const isTA2025 = dataKey === 'ta2025'
   const bulan    = payload.bulan
   const tril     = isTA2025 ? payload.nilaiTriliun2025 : payload.nilaiTriliun2026
+  const isReal   = isTA2025 ? payload.isReal2025 : payload.isReal2026
 
   const tanggal = isTA2025
     ? (bulan === 'Januari' ? "31 Jan '25" : "28 Feb '25")
     : (bulan === 'Januari' ? "31 Jan '26" : "20 Feb '26")
 
-  // TA2025 label di atas, TA2026 di bawah
-  const baseY = isTA2025 ? cy - 48 : cy + 20
+  const baseY = isTA2025 ? cy - 54 : cy + 18
 
   return (
     <g>
-      <circle cx={cx} cy={cy} r={5} fill={color} stroke="#fff" strokeWidth={2} />
+      {/* Dot: solid jika asli, outline jika simulasi */}
+      <circle cx={cx} cy={cy} r={5} fill={isReal ? color : '#fff'} stroke={color} strokeWidth={2} />
       <text x={cx} y={baseY} textAnchor="middle" fontSize={10} fontWeight={700}
         fill={color} fontFamily="Arial, sans-serif">{tanggal}</text>
       {tril != null && (
         <text x={cx} y={baseY + 13} textAnchor="middle" fontSize={9.5} fontWeight={500}
           fill="#475569" fontFamily="Arial, sans-serif">{tril} T</text>
       )}
-      <text x={cx} y={baseY + 26} textAnchor="middle" fontSize={11} fontWeight={800}
-        fill={color} fontFamily="Arial, sans-serif">{val.toFixed(2)}%</text>
+      <text x={cx} y={baseY + 27} textAnchor="middle" fontSize={12} fontWeight={800}
+        fill={color} fontFamily="Arial, sans-serif">
+        {val.toFixed(2)}%{isReal ? '' : '*'}
+      </text>
     </g>
   )
 }
@@ -72,7 +142,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   )
 }
 
-/* ── Satu panel chart ── */
+/* ── Panel chart tunggal ── */
 function MiniTrend({ points, title, height = 240 }: { points: TrendPoint[]; title?: string; height?: number }) {
   const yVals = points.flatMap(d => [d.ta2025, d.ta2026]).filter((v): v is number => v !== null)
   if (!yVals.length) return null
@@ -88,11 +158,11 @@ function MiniTrend({ points, title, height = 240 }: { points: TrendPoint[]; titl
       )}
       <div style={{ border: '1px solid #e2e8f0', borderRadius: title ? '0 0 8px 8px' : 8, background: '#fff', padding: '8px 4px 4px' }}>
         <ResponsiveContainer width="100%" height={height}>
-          <LineChart data={points} margin={{ top: 52, right: 40, left: 0, bottom: 24 }}>
+          <LineChart data={points} margin={{ top: 56, right: 44, left: 0, bottom: 24 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
             <XAxis dataKey="bulan" tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={{ stroke: '#e2e8f0' }} />
             <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={v => `${v}%`}
-              domain={[yMin, yMax]} width={42} axisLine={false} tickLine={false} />
+              domain={[yMin, yMax]} width={44} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} />
             <Line type="linear" dataKey="ta2025" stroke="#3b82f6" strokeWidth={2.5}
               dot={<CustomDot dataKey="ta2025" color="#3b82f6" />} activeDot={{ r: 6 }} connectNulls />
@@ -100,7 +170,6 @@ function MiniTrend({ points, title, height = 240 }: { points: TrendPoint[]; titl
               dot={<CustomDot dataKey="ta2026" color="#ef4444" />} activeDot={{ r: 6 }} connectNulls />
           </LineChart>
         </ResponsiveContainer>
-        {/* Legend */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: 24, paddingBottom: 8 }}>
           {[['#3b82f6', 'TA 2025'], ['#ef4444', 'TA 2026']].map(([color, label]) => (
             <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#374151', fontWeight: 600 }}>
@@ -117,98 +186,56 @@ function MiniTrend({ points, title, height = 240 }: { points: TrendPoint[]; titl
   )
 }
 
-/* ── Simulasi tren dari snapshot ── */
-function simulate(data: LRARow[], jenis: string | null, metric: 'persenPendapatan' | 'persenBelanja'): TrendPoint[] {
-  const rows   = jenis ? data.filter(r => r.jenis === jenis) : data
-  const n      = rows.length || 1
-  const avg    = rows.reduce((s, r) => s + r[metric], 0) / n
-  const angKey = metric === 'persenPendapatan' ? 'anggaranPendapatan' : 'anggaranBelanja'
-  const totalA = rows.reduce((s, r) => s + (r as any)[angKey], 0)
-  const toT    = (pct: number) => parseFloat((totalA * pct / 100 / 1e12).toFixed(2))
-
-  const feb26 = avg,          jan26 = avg * 0.58
-  const feb25 = avg * 1.37,   jan25 = avg * 0.72
-
-  return [
-    { bulan: 'Januari', ta2025: parseFloat(jan25.toFixed(2)), ta2026: parseFloat(jan26.toFixed(2)), nilaiTriliun2025: toT(jan25), nilaiTriliun2026: toT(jan26) },
-    { bulan: 'Februari', ta2025: parseFloat(feb25.toFixed(2)), ta2026: parseFloat(feb26.toFixed(2)), nilaiTriliun2025: toT(feb25), nilaiTriliun2026: toT(feb26) },
-  ]
-}
-
-/* ═══════════════════════════════════════════════ */
+/* ═══════════════════════ Main ═══════════════════════ */
 export default function TrendChart({ data, metric }: TrendChartProps) {
-  const printRef = useRef<HTMLDivElement>(null)
+  const printRef  = useRef<HTMLDivElement>(null)
   const [downloading, setDownloading] = useState(false)
   const [fullscreen, setFullscreen]   = useState(false)
-  const [groups, setGroups]           = useState<TrendGroup[] | null>(null)
-  const [usingSimulation, setUsingSimulation] = useState(false)
+  const [apiData, setApiData]         = useState<JenisData[] | null>(null)
+  const [sheetsFound, setSheetsFound] = useState<Record<string, string | null>>({})
+  const [loadingTrend, setLoadingTrend] = useState(true)
 
   const metricLabel = metric === 'persenPendapatan' ? 'PENDAPATAN' : 'BELANJA'
 
-  /* ── Fetch data tren (asli atau simulasi) ── */
+  /* ── Fetch data tren dari API ── */
   useEffect(() => {
     if (!data.length) return
     let cancelled = false
-
-    async function loadTrend() {
-      try {
-        const res  = await fetch(`/api/sheets?action=trend`)
-        const json = await res.json()
-
+    setLoadingTrend(true)
+    fetch('/api/sheets?action=trend')
+      .then(r => r.json())
+      .then(json => {
         if (cancelled) return
-
-        if (json.hasTrendSheet && json.data?.length) {
-          // ── Data asli dari sheet ──
-          const raw: any[] = json.data
-          const metricPct  = metric === 'persenPendapatan' ? 'persenPendapatan' : 'persenBelanja'
-          const metricVal  = metric === 'persenPendapatan' ? 'nilaiPendapatanT'  : 'nilaiBelanjaTrilun'
-
-          const buildGroup = (jenisFilter: string | null, label: string): TrendGroup => {
-            const filtered = jenisFilter
-              ? raw.filter(r => r.jenis?.toLowerCase() === jenisFilter.toLowerCase())
-              : raw
-
-            const bulanList = [...new Set(filtered.map(r => r.bulan))] as string[]
-            const points: TrendPoint[] = bulanList.map(bulan => {
-              const r25 = filtered.find(r => r.bulan === bulan && String(r.tahun) === '2025')
-              const r26 = filtered.find(r => r.bulan === bulan && String(r.tahun) === '2026')
-              return {
-                bulan,
-                ta2025: r25?.[metricPct] ?? null,
-                ta2026: r26?.[metricPct] ?? null,
-                nilaiTriliun2025: r25?.[metricVal] ?? null,
-                nilaiTriliun2026: r26?.[metricVal] ?? null,
-              }
-            })
-            return { label, jenis: jenisFilter, points }
-          }
-
-          setGroups([
-            buildGroup(null,          'Provinsi, Kabupaten/Kota'),
-            buildGroup('Provinsi',    'Provinsi'),
-            buildGroup('Kabupaten',   'Kabupaten'),
-            buildGroup('Kota',        'Kota'),
-          ])
-          setUsingSimulation(false)
-        } else {
-          throw new Error('no sheet')
+        if (json.data) {
+          setApiData(json.data)
+          setSheetsFound(json.sheetsFound ?? {})
         }
-      } catch {
-        // Fallback ke simulasi
-        if (cancelled) return
-        setGroups([
-          { label: 'Provinsi, Kabupaten/Kota', jenis: null,        points: simulate(data, null,        metric) },
-          { label: 'Provinsi',                 jenis: 'Provinsi',  points: simulate(data, 'Provinsi',  metric) },
-          { label: 'Kabupaten',                jenis: 'Kabupaten', points: simulate(data, 'Kabupaten', metric) },
-          { label: 'Kota',                     jenis: 'Kota',      points: simulate(data, 'Kota',      metric) },
-        ])
-        setUsingSimulation(true)
-      }
-    }
-
-    loadTrend()
+      })
+      .catch(() => { /* gagal: tetap pakai lokal */ })
+      .finally(() => { if (!cancelled) setLoadingTrend(false) })
     return () => { cancelled = true }
-  }, [data, metric])
+  }, [data])
+
+  /* ── Bangun grup tren ── */
+  const groups = useMemo(() => {
+    const JENIS = [
+      { label: 'Provinsi, Kabupaten/Kota', key: 'Semua',     filter: null },
+      { label: 'Provinsi',                 key: 'Provinsi',  filter: 'Provinsi' },
+      { label: 'Kabupaten',                key: 'Kabupaten', filter: 'Kabupaten' },
+      { label: 'Kota',                     key: 'Kota',      filter: 'Kota' },
+    ]
+    return JENIS.map(j => ({
+      label:  j.label,
+      points: buildPoints(
+        apiData?.find(d => d.jenis === j.key) ?? null,
+        data, j.filter, metric
+      ),
+    }))
+  }, [apiData, data, metric])
+
+  /* Cek apakah ada data real yang berhasil diambil */
+  const hasRealHistorical = Object.values(sheetsFound).some(v => v !== null)
+  const realSheets = Object.entries(sheetsFound).filter(([, v]) => v).map(([k, v]) => `${k}: "${v}"`)
 
   const handleDownload = useCallback(async () => {
     const el = printRef.current
@@ -227,7 +254,7 @@ export default function TrendChart({ data, metric }: TrendChartProps) {
 
   const Buttons = ({ inModal = false }) => (
     <div style={{ display: 'flex', gap: 8 }}>
-      <button onClick={handleDownload} disabled={downloading || !groups} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: '#1e3a8a', color: '#fff', fontWeight: 700, fontSize: 12, opacity: (downloading || !groups) ? 0.6 : 1 }}>
+      <button onClick={handleDownload} disabled={downloading || loadingTrend} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: '#1e3a8a', color: '#fff', fontWeight: 700, fontSize: 12, opacity: (downloading || loadingTrend) ? 0.6 : 1 }}>
         {downloading ? '⏳' : '⬇️'} Unduh JPG
       </button>
       {!inModal
@@ -239,12 +266,10 @@ export default function TrendChart({ data, metric }: TrendChartProps) {
 
   const Content = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Baris atas: gabungan */}
-      <MiniTrend points={groups![0].points} title={groups![0].label} height={260} />
-      {/* Baris bawah: 3 kolom */}
+      <MiniTrend points={groups[0].points} title={groups[0].label} height={270} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-        {groups!.slice(1).map(g => (
-          <MiniTrend key={g.label} points={g.points} title={g.label} height={220} />
+        {groups.slice(1).map(g => (
+          <MiniTrend key={g.label} points={g.points} title={g.label} height={230} />
         ))}
       </div>
     </div>
@@ -262,36 +287,42 @@ export default function TrendChart({ data, metric }: TrendChartProps) {
             <p className="chart-subtitle" style={{ margin: '4px 0 0' }}>
               APBD PROVINSI, KABUPATEN DAN KOTA SE-INDONESIA TA 2025–2026
             </p>
-            {usingSimulation && (
+            {loadingTrend && (
+              <p style={{ fontSize: 11, color: '#94a3b8', margin: '4px 0 0' }}>⏳ Memuat data historis...</p>
+            )}
+            {!loadingTrend && hasRealHistorical && (
+              <p style={{ fontSize: 11, color: '#16a34a', margin: '4px 0 0' }}>
+                ✅ Data historis ditemukan: {realSheets.join(', ')}
+              </p>
+            )}
+            {!loadingTrend && !hasRealHistorical && (
               <p style={{ fontSize: 11, color: '#f59e0b', margin: '4px 0 0', fontStyle: 'italic' }}>
-                ⚠️ Data tren disimulasi — tambahkan sheet &quot;Tren LRA&quot; di spreadsheet untuk data asli
+                ⚠️ Sheet historis tidak ditemukan — titik bertanda * adalah estimasi &nbsp;|&nbsp;
+                <strong>Feb 2026</strong> = data asli
               </p>
             )}
           </div>
           <Buttons />
         </div>
 
-        {!groups ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8', fontSize: 13 }}>
-            ⏳ Memuat data tren...
-          </div>
-        ) : (
-          <div ref={printRef} style={{ background: '#fff', padding: 16, borderRadius: 8 }}>
-            <div style={{ textAlign: 'center', marginBottom: 12 }}>
-              <div style={{ fontSize: 17, fontWeight: 800, color: '#0f172a' }}>
-                TREN PERSENTASE REALISASI{' '}
-                <span style={{ background: '#fef08a', padding: '1px 5px', borderRadius: 3 }}>{metricLabel}</span>
-              </div>
-              <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>
-                APBD PROVINSI, KABUPATEN DAN KOTA SE-INDONESIA TA 2025–2026
-              </div>
+        <div ref={printRef} style={{ background: '#fff', padding: 16, borderRadius: 8 }}>
+          <div style={{ textAlign: 'center', marginBottom: 12 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: '#0f172a' }}>
+              TREN PERSENTASE REALISASI{' '}
+              <span style={{ background: '#fef08a', padding: '1px 5px', borderRadius: 3 }}>{metricLabel}</span>
             </div>
-            <Content />
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>
+              APBD PROVINSI, KABUPATEN DAN KOTA SE-INDONESIA TA 2025–2026
+            </div>
           </div>
-        )}
+          {loadingTrend
+            ? <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>⏳ Memuat data tren...</div>
+            : <Content />
+          }
+        </div>
       </div>
 
-      {fullscreen && groups && (
+      {fullscreen && !loadingTrend && (
         <div onClick={e => { if (e.target === e.currentTarget) setFullscreen(false) }}
           style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(4px)' }}>
           <div style={{ background: '#fff', borderRadius: 16, width: '98vw', height: '95vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
