@@ -16,11 +16,10 @@ interface ComparisonBarChartProps {
   kategori: string
 }
 
-/* ── Tooltip ── */
 const CustomTooltip = ({ active, payload, label, rataRata }: any) => {
   if (!active || !payload?.length) return null
   const val = payload[0].value as number
-  if (val === null || val === undefined) return null
+  if (!val) return null
   const diff = (val - rataRata).toFixed(2)
   const isAbove = val >= rataRata
   return (
@@ -35,76 +34,63 @@ const CustomTooltip = ({ active, payload, label, rataRata }: any) => {
   )
 }
 
-/* ── Label % vertikal di atas bar ── */
 const BarPercentLabel = (props: any) => {
-  const { x, y, width, value, isTop } = props
-  if (value === null || value === undefined || value === 0) return null
+  const { x, y, width, value, isAbove } = props
+  if (!value) return null
   const cx = x + width / 2
   const ty = y - 4
   return (
-    <text
-      x={cx} y={ty}
-      textAnchor="start"
-      fontSize={9} fontWeight={700}
-      fontFamily="Plus Jakarta Sans, Arial, sans-serif"
-      fill={isTop ? '#047857' : '#b91c1c'}
-      transform={`rotate(-90, ${cx}, ${ty})`}
-    >
+    <text x={cx} y={ty} textAnchor="start" fontSize={9} fontWeight={700}
+      fontFamily="Arial, sans-serif"
+      fill={isAbove ? '#047857' : '#b91c1c'}
+      transform={`rotate(-90, ${cx}, ${ty})`}>
       {value.toFixed(2)}%
     </text>
   )
 }
 
-/* ── Kotak biru "N LAINNYA" ── */
+const MinBar = (props: any) => {
+  const { x, y, width, height, fill, fillOpacity } = props
+  if (!fill || fill === 'transparent' || fillOpacity === 0) return null
+  const MIN_H = 5
+  const realH = Math.max(height ?? 0, MIN_H)
+  const realY = y + (height ?? 0) - realH
+  return <rect x={x} y={realY} width={width} height={realH} rx={2} fill={fill} fillOpacity={fillOpacity ?? 0.9} />
+}
+
+
+/* ── Kotak biru "N LAINNYA" di gap ── */
 const GapLabel = (props: any) => {
   const { x, y, width, height, value } = props
   if (!value) return null
-  const boxW = width * 4
-  const boxX = x - 2
+  const boxW = width * 4.2
+  const boxX = x - boxW * 0.1
   const cx   = boxX + boxW / 2
   const midY = y + height / 2
   return (
     <g>
       <rect x={boxX} y={midY - 26} width={boxW} height={52} rx={8} fill="#1e40af" opacity={0.93} />
-      <text x={cx} y={midY - 8} textAnchor="middle" fill="#fff" fontSize={13} fontWeight={800}
-        fontFamily="Plus Jakarta Sans, Arial, sans-serif">{value}</text>
-      <text x={cx} y={midY + 10} textAnchor="middle" fill="#bfdbfe" fontSize={10} fontWeight={600}
-        fontFamily="Plus Jakarta Sans, Arial, sans-serif">LAINNYA</text>
+      <text x={cx} y={midY - 7} textAnchor="middle" fill="#fff" fontSize={13} fontWeight={800}
+        fontFamily="Arial, sans-serif">{value}</text>
+      <text x={cx} y={midY + 11} textAnchor="middle" fill="#bfdbfe" fontSize={10} fontWeight={600}
+        fontFamily="Arial, sans-serif">LAINNYA</text>
     </g>
   )
 }
 
-/* ── Bar dengan tinggi minimum ── */
-const MinBar = (props: any) => {
-  const { x, y, width, height, fill, fillOpacity, radius } = props
-  if (!fill || fill === 'transparent' || fillOpacity === 0) return null
-  const MIN_H = 6
-  const realH = Math.max(height ?? 0, MIN_H)
-  const realY = y + (height ?? 0) - realH
-  const r     = Math.min(radius?.[0] ?? 3, realH / 2)
+/* ── Chart konten — dipakai di normal, fullscreen, dan download ── */
+function ChartContent({ chartData, rataRata, kategori, metricLabel, isProvinsi, TOP_N, BOTTOM_N, yMax, chartHeight }: any) {
   return (
-    <rect x={x} y={realY} width={width} height={realH}
-      rx={r} ry={r} fill={fill} fillOpacity={fillOpacity ?? 0.9} />
-  )
-}
-
-/* ════════════════════════════════════════ */
-/* Inner chart — dipakai di normal & fullscreen */
-/* ════════════════════════════════════════ */
-function ChartInner({ chartData, rataRata, kategori, metricLabel, TOP_N, BOTTOM_N, yMax, height = 500 }: any) {
-  return (
-    <>
-      <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={chartData} margin={{ top: 80, right: 60, left: 10, bottom: 130 }} barCategoryGap="10%">
+    <div style={{ width: '100%' }}>
+      <ResponsiveContainer width="100%" height={chartHeight}>
+        <BarChart data={chartData} margin={{ top: 80, right: 80, left: 10, bottom: 140 }} barCategoryGap="15%">
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-          <XAxis
-            dataKey="name"
-            tick={{ fontSize: 8.5, fill: '#374151', fontFamily: 'Plus Jakarta Sans, Arial' }}
+          <XAxis dataKey="name"
+            tick={{ fontSize: 8.5, fill: '#374151', fontFamily: 'Arial' }}
             angle={-50} textAnchor="end" interval={0} tickLine={false}
             axisLine={{ stroke: '#cbd5e1' }}
           />
-          <YAxis
-            tick={{ fontSize: 10, fill: '#6b7280' }}
+          <YAxis tick={{ fontSize: 10, fill: '#6b7280' }}
             tickFormatter={v => `${v}%`} width={52}
             domain={[0, yMax]} axisLine={false} tickLine={false}
           />
@@ -112,17 +98,14 @@ function ChartInner({ chartData, rataRata, kategori, metricLabel, TOP_N, BOTTOM_
           <ReferenceLine y={rataRata} stroke="#eab308" strokeWidth={3}
             label={{ value: `Rata-rata ${kategori}`, position: 'right', fontSize: 10, fill: '#92400e', fontWeight: 700 }}
           />
-          <Bar dataKey="value" radius={[3, 3, 0, 0]} maxBarSize={42} isAnimationActive={false} shape={<MinBar />}>
+          <Bar dataKey="value" radius={[3, 3, 0, 0]} maxBarSize={36} isAnimationActive={false} shape={<MinBar />}>
             {chartData.map((entry: any, i: number) => (
-              <Cell key={i}
-                fill={entry.isGap ? 'transparent' : entry.color}
-                fillOpacity={entry.isGap ? 0 : 0.90}
-              />
+              <Cell key={i} fill={entry.color} fillOpacity={entry.color === 'transparent' ? 0 : 0.9} />
             ))}
             <LabelList dataKey="value" content={(props: any) => {
               const row = chartData[props.index]
-              if (!row || row.isGap) return null
-              return <BarPercentLabel {...props} isTop={row.isTop} />
+              if (!row || row.color === 'transparent') return null
+              return <BarPercentLabel {...props} isAbove={row.isAbove} />
             }} />
             <LabelList dataKey="value" content={(props: any) => {
               const row = chartData[props.index]
@@ -133,18 +116,20 @@ function ChartInner({ chartData, rataRata, kategori, metricLabel, TOP_N, BOTTOM_
         </BarChart>
       </ResponsiveContainer>
 
-      {/* Label bawah */}
-      <div style={{ display: 'grid', gridTemplateColumns: `${TOP_N}fr 1.2fr ${BOTTOM_N}fr`, marginTop: -4, paddingInline: 62 }}>
-        <div style={{ background: '#1e3a8a', color: '#fff', textAlign: 'center', padding: '9px 6px', borderRadius: '6px 0 0 6px', fontSize: 11, fontWeight: 700, lineHeight: 1.5 }}>
-          {TOP_N} {kategori.toUpperCase()}<br />
-          <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.85 }}>PERSENTASE REALISASI {metricLabel} TERBESAR</span>
+      {/* Label bawah terbesar/terkecil — hanya non-provinsi */}
+      {!isProvinsi && (
+        <div style={{ display: 'flex', gap: 0, marginTop: -4, paddingInline: 62 }}>
+          <div style={{ flex: TOP_N, background: '#1e3a8a', color: '#fff', textAlign: 'center', padding: '9px 6px', borderRadius: '6px 0 0 6px', fontSize: 11, fontWeight: 700, lineHeight: 1.5 }}>
+            {TOP_N} {kategori.toUpperCase()}<br />
+            <span style={{ fontSize: 10, opacity: 0.85 }}>PERSENTASE REALISASI {metricLabel} TERBESAR</span>
+          </div>
+          <div style={{ flex: 1.5 }} />
+          <div style={{ flex: BOTTOM_N, background: '#1e3a8a', color: '#fff', textAlign: 'center', padding: '9px 6px', borderRadius: '0 6px 6px 0', fontSize: 11, fontWeight: 700, lineHeight: 1.5 }}>
+            {BOTTOM_N} {kategori.toUpperCase()}<br />
+            <span style={{ fontSize: 10, opacity: 0.85 }}>PERSENTASE REALISASI {metricLabel} TERKECIL</span>
+          </div>
         </div>
-        <div />
-        <div style={{ background: '#1e3a8a', color: '#fff', textAlign: 'center', padding: '9px 6px', borderRadius: '0 6px 6px 0', fontSize: 11, fontWeight: 700, lineHeight: 1.5 }}>
-          {BOTTOM_N} {kategori.toUpperCase()}<br />
-          <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.85 }}>PERSENTASE REALISASI {metricLabel} TERKECIL</span>
-        </div>
-      </div>
+      )}
 
       {/* Legend hitam */}
       <div style={{ background: '#111827', borderRadius: 8, marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 36, padding: '10px 20px', flexWrap: 'wrap' }}>
@@ -158,153 +143,165 @@ function ChartInner({ chartData, rataRata, kategori, metricLabel, TOP_N, BOTTOM_
           RATA-RATA {kategori.toUpperCase()}
         </span>
       </div>
-    </>
+    </div>
   )
 }
 
-/* ════════════════════════════════════════ */
-/* Main export                              */
-/* ════════════════════════════════════════ */
 export default function ComparisonBarChart({ data, metric, rataRata, title, subtitle, kategori }: ComparisonBarChartProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const printRef   = useRef<HTMLDivElement>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const [downloading, setDownloading] = useState(false)
 
-  const valid  = data.filter(r => r[metric] > 0.05)
-  const sorted = [...valid].sort((a, b) => b[metric] - a[metric])
-  const TOP_N    = 20
-  const BOTTOM_N = 20
-  const top    = sorted.slice(0, TOP_N)
-  const bottom = sorted.slice(-BOTTOM_N)
-  const others = Math.max(0, sorted.length - TOP_N - BOTTOM_N)
+  const isProvinsi = kategori === 'Provinsi'
+  const valid      = data.filter(r => r[metric] > 0.05)
+  const sorted     = [...valid].sort((a, b) => b[metric] - a[metric])
+  const TOP_N = 20, BOTTOM_N = 20
 
-  type ChartRow = { name: string; value: number | null; isTop: boolean; isGap: boolean; gapLabel: string | null; color: string }
+  type Row = { name: string; value: number; isAbove: boolean; color: string; isGap?: boolean; gapLabel?: string | null }
 
-  const chartData: ChartRow[] = [
-    ...top.map(r => ({ name: r.daerah, value: parseFloat(r[metric].toFixed(2)), isTop: true, isGap: false, gapLabel: null, color: '#16a34a' })),
-    ...(Array.from({ length: 4 }).map((_, i) => ({
-      name: i === 0 ? ' ' : '\u00a0'.repeat(i + 1),
-      value: null as number | null,
-      isTop: false,
-      isGap: i === 0,
-      gapLabel: i === 0 && others > 0 ? String(others) : null,
-      color: 'transparent',
-    }))),
-    ...bottom.map(r => ({ name: r.daerah, value: parseFloat(r[metric].toFixed(2)), isTop: false, isGap: false, gapLabel: null, color: '#dc2626' })),
-  ]
+  let chartData: Row[]
+  if (isProvinsi) {
+    chartData = sorted.map(r => {
+      const val = parseFloat(r[metric].toFixed(2))
+      const above = val >= rataRata
+      return { name: r.daerah, value: val, isAbove: above, color: above ? '#16a34a' : '#dc2626' }
+    })
+  } else {
+    const top = sorted.slice(0, TOP_N)
+    const bot = sorted.slice(-BOTTOM_N)
+    chartData = [
+      ...top.map(r => ({ name: r.daerah, value: parseFloat(r[metric].toFixed(2)), isAbove: true, color: '#16a34a' })),
+      ...Array.from({ length: 4 }, (_, i) => ({
+        name:     i === 0 ? ' ' : '\u00a0'.repeat(i + 1),
+        value:    0,
+        isAbove:  false,
+        color:    'transparent',
+        isGap:    i === 0,
+        gapLabel: i === 0 ? String(Math.max(0, sorted.length - TOP_N - BOTTOM_N)) : null,
+      })),
+      ...bot.map(r => ({ name: r.daerah, value: parseFloat(r[metric].toFixed(2)), isAbove: false, color: '#dc2626' })),
+    ]
+  }
 
-  const maxVal = top[0] ? top[0][metric] : 20
+  const maxVal = sorted[0]?.[metric] ?? 20
   const yMax   = Math.ceil(maxVal / 2) * 2 + 2
   const metricLabel = metric === 'persenPendapatan' ? 'PENDAPATAN' : 'BELANJA'
 
-  /* ── Download JPG ── */
+  const sharedProps = { chartData, rataRata, kategori, metricLabel, isProvinsi, TOP_N, BOTTOM_N, yMax }
+
+  /* Download: screenshot printRef (area bersih tanpa tombol) */
   const handleDownload = useCallback(async () => {
-    const target = fullscreen
-      ? document.getElementById('chart-fullscreen-inner')
-      : containerRef.current
-    if (!target) return
+    const el = printRef.current
+    if (!el) return
     setDownloading(true)
     try {
-      const html2canvas = (await import('html2canvas')).default
-      const canvas = await html2canvas(target, {
+      const h2c = (await import('html2canvas')).default
+      const canvas = await h2c(el, {
         backgroundColor: '#ffffff',
         scale: 2,
         useCORS: true,
         logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        width: el.offsetWidth,
+        height: el.offsetHeight,
+        windowWidth: el.offsetWidth,
+        windowHeight: el.offsetHeight,
       })
-      const link = document.createElement('a')
-      link.download = `${title.replace(/\s+/g, '_')}_${kategori}.jpg`
-      link.href = canvas.toDataURL('image/jpeg', 0.95)
-      link.click()
-    } catch (e) {
-      console.error('Download error', e)
-    } finally {
-      setDownloading(false)
-    }
-  }, [fullscreen, title, kategori])
+      const a = document.createElement('a')
+      a.download = `${title.replace(/\s+/g, '_')}_${kategori}.jpg`
+      a.href = canvas.toDataURL('image/jpeg', 0.95)
+      a.click()
+    } catch (e) { console.error(e) }
+    finally { setDownloading(false) }
+  }, [title, kategori])
 
-  const sharedProps = { chartData, rataRata, kategori, metricLabel, TOP_N, BOTTOM_N, yMax }
-
-  const ActionButtons = ({ inModal = false }) => (
-    <div style={{ display: 'flex', gap: 8 }}>
-      <button
-        onClick={handleDownload}
-        disabled={downloading}
-        title="Download JPG"
-        style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
-          background: '#1e3a8a', color: '#fff', fontWeight: 700, fontSize: 12,
-          opacity: downloading ? 0.7 : 1, transition: 'opacity 0.2s',
-        }}
-      >
-        {downloading ? '⏳' : '⬇️'} JPG
+  /* Tombol aksi */
+  const Buttons = ({ inModal = false }) => (
+    <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+      <button onClick={handleDownload} disabled={downloading} style={{
+        display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
+        borderRadius: 8, border: 'none', cursor: 'pointer',
+        background: '#1e3a8a', color: '#fff', fontWeight: 700, fontSize: 12,
+        opacity: downloading ? 0.7 : 1,
+      }}>
+        {downloading ? '⏳' : '⬇️'} Unduh JPG
       </button>
-      <button
-        onClick={() => setFullscreen(f => !f)}
-        title={inModal ? 'Tutup' : 'Fullscreen'}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
-          background: inModal ? '#dc2626' : '#0f172a', color: '#fff', fontWeight: 700, fontSize: 12,
-          transition: 'background 0.2s',
-        }}
-      >
-        {inModal ? '✕ Tutup' : '⛶ Fullscreen'}
-      </button>
+      {!inModal ? (
+        <button onClick={() => setFullscreen(true)} style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
+          borderRadius: 8, border: 'none', cursor: 'pointer',
+          background: '#0f172a', color: '#fff', fontWeight: 700, fontSize: 12,
+        }}>⛶ Fullscreen</button>
+      ) : (
+        <button onClick={() => setFullscreen(false)} style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
+          borderRadius: 8, border: 'none', cursor: 'pointer',
+          background: '#dc2626', color: '#fff', fontWeight: 700, fontSize: 12,
+        }}>✕ Tutup</button>
+      )}
     </div>
   )
 
   return (
     <>
-      {/* ── Normal card ── */}
-      <div className="chart-container" ref={containerRef}>
-        <div className="chart-header" style={{ position: 'relative' }}>
-          {/* Tombol aksi pojok kanan atas */}
-          <div style={{ position: 'absolute', top: 0, right: 0 }}>
-            <ActionButtons />
+      {/* ══ Tampilan normal ══ */}
+      <div className="chart-container">
+        {/* Toolbar — tidak ikut download */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+          <div>
+            <h3 className="chart-title" style={{ margin: 0 }}>{title}</h3>
+            <p className="chart-subtitle" style={{ margin: '4px 0 0' }}>{subtitle}</p>
           </div>
-          <h3 className="chart-title">{title}</h3>
-          <p className="chart-subtitle">{subtitle}</p>
-          <p style={{ textAlign: 'right', fontWeight: 700, fontSize: 13, color: '#1e3a8a', marginTop: 4, paddingRight: 8 }}>
-            Rata-Rata {kategori} = <strong>{rataRata.toFixed(2)}%</strong>
-          </p>
+          <Buttons />
         </div>
-        <ChartInner {...sharedProps} height={500} />
+
+        {/* Area bersih yang di-screenshot */}
+        <div ref={printRef} style={{ background: '#fff', padding: 16, borderRadius: 8 }}>
+          {/* Header dalam gambar */}
+          <div style={{ textAlign: 'center', marginBottom: 8 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', letterSpacing: 0.3 }}>{title}</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>{subtitle}</div>
+          </div>
+          <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 13, color: '#1e3a8a', marginBottom: 4 }}>
+            Rata-Rata {kategori} = <strong>{rataRata.toFixed(2)}%</strong>
+          </div>
+          <ChartContent {...sharedProps} chartHeight={500} />
+        </div>
       </div>
 
-      {/* ── Fullscreen modal ── */}
+      {/* ══ Fullscreen modal ══ */}
       {fullscreen && (
-        <div
-          onClick={e => { if (e.target === e.currentTarget) setFullscreen(false) }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.75)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 24, backdropFilter: 'blur(4px)',
-          }}
-        >
-          <div
-            id="chart-fullscreen-inner"
-            style={{
-              background: '#fff', borderRadius: 16, padding: '24px 28px',
-              width: '96vw', maxWidth: 1600,
-              maxHeight: '94vh', overflowY: 'auto',
-              boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-            }}
-          >
-            {/* Header modal */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.82)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 16, backdropFilter: 'blur(4px)',
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 16,
+            width: '98vw', height: '95vh',
+            display: 'flex', flexDirection: 'column',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          }}>
+            {/* Toolbar modal — tidak diunduh */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
               <div>
-                <h3 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', margin: 0 }}>{title}</h3>
-                <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0' }}>{subtitle}</p>
-                <p style={{ fontSize: 14, fontWeight: 700, color: '#1e3a8a', marginTop: 6 }}>
-                  Rata-Rata {kategori} = <strong>{rataRata.toFixed(2)}%</strong>
-                </p>
+                <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a' }}>{title}</div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{subtitle}</div>
               </div>
-              <ActionButtons inModal />
+              <Buttons inModal />
             </div>
-            <ChartInner {...sharedProps} height={600} />
+
+            {/* Konten fullscreen — flex fill, tidak scroll */}
+            <div style={{ flex: 1, padding: '12px 20px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 13, color: '#1e3a8a', marginBottom: 4 }}>
+                Rata-Rata {kategori} = <strong>{rataRata.toFixed(2)}%</strong>
+              </div>
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <ChartContent {...sharedProps} chartHeight="100%" />
+              </div>
+            </div>
           </div>
         </div>
       )}
