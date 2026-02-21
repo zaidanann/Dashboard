@@ -69,10 +69,10 @@ export async function GET(req: NextRequest) {
       if (!detected) {
         // Fallback ke kolom default jika auto-detect gagal
         cols = {
-          penerimaanAng:   155,
-          penerimaanReal:  156,
-          pengeluaranAng:  158,
-          pengeluaranReal: 159,
+          penerimaanAng:   75,
+          penerimaanReal:  76,
+          pengeluaranAng:  133,
+          pengeluaranReal: 134,
         }
       } else {
         cols = detected

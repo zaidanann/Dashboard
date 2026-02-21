@@ -47,10 +47,10 @@ export default function Sidebar({ onDataLoad, onDemoMode, isLoading, isOpen, onT
   const [loadingSheets, setLoadingSheets] = useState(false)
   const [sheetError, setSheetError]   = useState('')
   const [cols, setCols] = useState<ColConfig>({
-    penerimaanAng:   80,
-    penerimaanReal:  81,
-    pengeluaranAng:  137,
-    pengeluaranReal: 138,
+    penerimaanAng:   75,
+    penerimaanReal:  76,
+    pengeluaranAng:  133,
+    pengeluaranReal: 134,
   })
 
   async function fetchSheetList() {
