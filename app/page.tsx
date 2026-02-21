@@ -5,6 +5,7 @@ import Sidebar from '@/components/Sidebar'
 import MetricCard from '@/components/MetricCard'
 import GaugeChart from '@/components/GaugeChart'
 import ComparisonBarChart from '@/components/BarChart'
+import TrendChart from '@/components/TrendChart'
 import DataTable from '@/components/DataTable'
 import ProvinsiFilter from '@/components/ProvinsiFilter'
 import { LRARow, JenisDaerah } from '@/types/lra'
@@ -140,21 +141,9 @@ export default function DashboardPage() {
     }
   }, [refreshInterval, fetchData])
 
-  // Cari baris ini (sekitar line 100):
-const summary  = data.length ? getSummaryNasional(data) : null
-const byJenis  = Object.fromEntries(JENIS.map(j => [j, data.filter(r => r.jenis === j)]))
-const kategori = Object.fromEntries(JENIS.map(j => [j, getKategoriSummary(data, j)]))
-
-// Tambahkan tepat di bawahnya:
-if (data.length > 0) {
-  const provList = data.filter(r => r.jenis === 'Provinsi')
-  console.log('=== DEBUG PROVINSI ===')
-  console.log('Jumlah provinsi:', provList.length)
-  console.log('Daftar:', provList.map(r => r.daerah))
-  console.log('Jumlah Kabupaten:', data.filter(r => r.jenis === 'Kabupaten').length)
-  console.log('Jumlah Kota:', data.filter(r => r.jenis === 'Kota').length)
-  console.log('Total semua daerah:', data.length)
-}
+  const summary  = data.length ? getSummaryNasional(data) : null
+  const byJenis  = Object.fromEntries(JENIS.map(j => [j, data.filter(r => r.jenis === j)]))
+  const kategori = Object.fromEntries(JENIS.map(j => [j, getKategoriSummary(data, j)]))
 
   return (
     <div className="app-layout">
@@ -235,7 +224,19 @@ if (data.length > 0) {
               </div>
             </section>
 
-            {/* Filter Per Provinsi — BARU */}
+            {/* Tren Realisasi Pendapatan */}
+            <section className="section">
+              <h2 className="section-title">📈 Tren Realisasi Pendapatan</h2>
+              <TrendChart data={data} metric="persenPendapatan" />
+            </section>
+
+            {/* Tren Realisasi Belanja */}
+            <section className="section">
+              <h2 className="section-title">📈 Tren Realisasi Belanja</h2>
+              <TrendChart data={data} metric="persenBelanja" />
+            </section>
+
+            {/* Filter Per Provinsi */}
             <ProvinsiFilter data={data} />
 
             {/* Tabel Semua Daerah */}

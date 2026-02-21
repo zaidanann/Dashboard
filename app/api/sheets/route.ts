@@ -2,20 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSheetData, getAvailableSheets } from '@/lib/sheets'
 import { extractLRAData, autoDetectCols } from '@/lib/utils'
 
-// ── Konfigurasi default — hardcoded (tidak di-export agar tidak konflik Next.js) ──
 const DEFAULT_SHEET_URL  = 'https://docs.google.com/spreadsheets/d/13znDQlUkXtUvfkq7xpRSjKEcP5JAq-mKuz2SQKmPZGY/edit?usp=sharing'
 const DEFAULT_SHEET_NAME = 'Rekap LRA 2026 (agregat)'
 
-// Matikan cache — wajib untuk realtime
+// Sheet khusus tren — opsional, jika tidak ada pakai simulasi
+const TREND_SHEET_NAMES = [
+  'Tren LRA',
+  'Trend LRA',
+  'Tren Realisasi',
+  'Data Tren',
+]
+
 export const revalidate = 0
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const action = searchParams.get('action')
-
-  // Gunakan URL dari query atau fallback ke default
-  const url = searchParams.get('url') ?? DEFAULT_SHEET_URL
+  const url    = searchParams.get('url') ?? DEFAULT_SHEET_URL
 
   // ── List sheets ──────────────────────────────────────────────────────────
   if (action === 'sheets') {
@@ -30,12 +34,71 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── Get data ─────────────────────────────────────────────────────────────
+  // ── Data tren historis ───────────────────────────────────────────────────
+  if (action === 'trend') {
+    try {
+      const sheets = await getAvailableSheets(url)
+
+      // Cari sheet tren berdasarkan nama-nama yang mungkin
+      const trendSheet = sheets.find(s =>
+        TREND_SHEET_NAMES.some(name =>
+          s.title.toLowerCase().includes(name.toLowerCase())
+        )
+      )
+
+      if (!trendSheet) {
+        // Tidak ada sheet tren — kembalikan flag agar client pakai simulasi
+        return NextResponse.json(
+          { hasTrendSheet: false, data: null },
+          { headers: { 'Cache-Control': 'no-store' } }
+        )
+      }
+
+      // Ada sheet tren — ambil data
+      const rawTrend = await getSheetData(url, trendSheet.index)
+
+      // Parse: baris pertama = header, baris berikutnya = data
+      // Format yang diharapkan di sheet:
+      // Bulan | Tahun | Jenis | PersenPendapatan | NilaiPendapatanTriliun | PersenBelanja | NilaiBelanjaTrilun
+      const headers = rawTrend[0]?.map((h: string) => h?.toString().toLowerCase().trim()) ?? []
+
+      const findCol = (keywords: string[]) =>
+        headers.findIndex((h: string) => keywords.some(k => h.includes(k)))
+
+      const colBulan   = findCol(['bulan', 'month', 'periode'])
+      const colTahun   = findCol(['tahun', 'year', 'ta'])
+      const colJenis   = findCol(['jenis', 'kategori', 'type'])
+      const colPctPend = findCol(['persen_pendapatan', 'pct_pendapatan', '% pendapatan', 'realisasi pendapatan'])
+      const colValPend = findCol(['nilai_pendapatan', 'pendapatan_t', 'pendapatan triliun'])
+      const colPctBel  = findCol(['persen_belanja', 'pct_belanja', '% belanja', 'realisasi belanja'])
+      const colValBel  = findCol(['nilai_belanja', 'belanja_t', 'belanja triliun'])
+
+      const trendRows = rawTrend.slice(1)
+        .filter((row: any[]) => row[colBulan])
+        .map((row: any[]) => ({
+          bulan:               row[colBulan]   ?? '',
+          tahun:               row[colTahun]   ?? '',
+          jenis:               row[colJenis]   ?? 'Semua',
+          persenPendapatan:    parseFloat(row[colPctPend]) || 0,
+          nilaiPendapatanT:    parseFloat(row[colValPend]) || null,
+          persenBelanja:       parseFloat(row[colPctBel])  || 0,
+          nilaiBelanjaTrilun:  parseFloat(row[colValBel])  || null,
+        }))
+
+      return NextResponse.json(
+        { hasTrendSheet: true, sheetName: trendSheet.title, data: trendRows },
+        { headers: { 'Cache-Control': 'no-store' } }
+      )
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Gagal memuat data tren'
+      return NextResponse.json({ error: message }, { status: 500 })
+    }
+  }
+
+  // ── Get data LRA utama ───────────────────────────────────────────────────
   try {
-    // Resolve worksheet index
     let worksheetIndex = parseInt(searchParams.get('sheetIndex') ?? '-1')
 
-    // Jika tidak ada sheetIndex dari query, cari berdasarkan nama sheet default
     if (worksheetIndex < 0 || !searchParams.get('sheetIndex')) {
       const sheetName = searchParams.get('sheetName') ?? DEFAULT_SHEET_NAME
       const sheets = await getAvailableSheets(url)
@@ -43,20 +106,16 @@ export async function GET(req: NextRequest) {
       worksheetIndex = found?.index ?? 0
     }
 
-    // Ambil raw data
     const rawData = await getSheetData(url, worksheetIndex)
 
-    // ── Auto-detect kolom ────────────────────────────────────────────────
     let cols: { penerimaanAng: number; penerimaanReal: number; pengeluaranAng: number; pengeluaranReal: number }
 
-    // Cek apakah user menyuplai kolom manual
     const manualAng   = searchParams.get('penerimaanAng')
     const manualReal  = searchParams.get('penerimaanReal')
     const manualAngB  = searchParams.get('pengeluaranAng')
     const manualRealB = searchParams.get('pengeluaranReal')
 
     if (manualAng && manualReal && manualAngB && manualRealB) {
-      // Gunakan kolom dari user (mode manual sidebar)
       cols = {
         penerimaanAng:   parseInt(manualAng),
         penerimaanReal:  parseInt(manualReal),
@@ -64,29 +123,19 @@ export async function GET(req: NextRequest) {
         pengeluaranReal: parseInt(manualRealB),
       }
     } else {
-      // Auto-detect dari header spreadsheet
       const detected = autoDetectCols(rawData)
-      if (!detected) {
-        // Fallback ke kolom default jika auto-detect gagal
-        cols = {
-          penerimaanAng:   75,
-          penerimaanReal:  76,
-          pengeluaranAng:  133,
-          pengeluaranReal: 134,
-        }
-      } else {
-        cols = detected
+      cols = detected ?? {
+        penerimaanAng:   75,
+        penerimaanReal:  76,
+        pengeluaranAng:  133,
+        pengeluaranReal: 134,
       }
     }
 
     const lraData = extractLRAData(rawData, cols)
 
     return NextResponse.json(
-      {
-        data: lraData,
-        detectedCols: cols,   // kirim balik kolom yang terdeteksi — untuk debugging
-        worksheetIndex,
-      },
+      { data: lraData, detectedCols: cols, worksheetIndex },
       { headers: { 'Cache-Control': 'no-store' } }
     )
   } catch (err: unknown) {
