@@ -140,9 +140,21 @@ export default function DashboardPage() {
     }
   }, [refreshInterval, fetchData])
 
-  const summary  = data.length ? getSummaryNasional(data) : null
-  const byJenis  = Object.fromEntries(JENIS.map(j => [j, data.filter(r => r.jenis === j)]))
-  const kategori = Object.fromEntries(JENIS.map(j => [j, getKategoriSummary(data, j)]))
+  // Cari baris ini (sekitar line 100):
+const summary  = data.length ? getSummaryNasional(data) : null
+const byJenis  = Object.fromEntries(JENIS.map(j => [j, data.filter(r => r.jenis === j)]))
+const kategori = Object.fromEntries(JENIS.map(j => [j, getKategoriSummary(data, j)]))
+
+// Tambahkan tepat di bawahnya:
+if (data.length > 0) {
+  const provList = data.filter(r => r.jenis === 'Provinsi')
+  console.log('=== DEBUG PROVINSI ===')
+  console.log('Jumlah provinsi:', provList.length)
+  console.log('Daftar:', provList.map(r => r.daerah))
+  console.log('Jumlah Kabupaten:', data.filter(r => r.jenis === 'Kabupaten').length)
+  console.log('Jumlah Kota:', data.filter(r => r.jenis === 'Kota').length)
+  console.log('Total semua daerah:', data.length)
+}
 
   return (
     <div className="app-layout">
