@@ -58,7 +58,6 @@ const MinBar = (props: any) => {
   return <rect x={x} y={realY} width={width} height={realH} rx={2} fill={fill} fillOpacity={fillOpacity ?? 0.9} />
 }
 
-
 /* ── Kotak biru "N LAINNYA" di gap ── */
 const GapLabel = (props: any) => {
   const { x, y, width, height, value } = props
@@ -151,10 +150,19 @@ export default function ComparisonBarChart({ data, metric, rataRata, title, subt
   const printRef   = useRef<HTMLDivElement>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  const [showOutliers, setShowOutliers] = useState(false)
 
   const isProvinsi = kategori === 'Provinsi'
   const valid      = data.filter(r => r[metric] > 0.05)
-  const sorted     = [...valid].sort((a, b) => b[metric] - a[metric])
+
+  // ── Filter outlier: kecualikan data yang melebihi 5x rata-rata ──
+  // Minimal threshold 50% di atas rata-rata agar tidak terlalu agresif
+  const OUTLIER_MULTIPLIER = 5
+  const OUTLIER_THRESHOLD  = Math.max(rataRata * OUTLIER_MULTIPLIER, rataRata + 50)
+  const filtered  = valid.filter(r => r[metric] <= OUTLIER_THRESHOLD)
+  const outliers  = valid.filter(r => r[metric] >  OUTLIER_THRESHOLD)
+
+  const sorted = [...filtered].sort((a, b) => b[metric] - a[metric])
   const TOP_N = 20, BOTTOM_N = 20
 
   type Row = { name: string; value: number; isAbove: boolean; color: string; isGap?: boolean; gapLabel?: string | null }
@@ -243,6 +251,64 @@ export default function ComparisonBarChart({ data, metric, rataRata, title, subt
     </div>
   )
 
+  /* ── Info box outlier ── */
+  const OutlierBox = () => {
+    if (outliers.length === 0) return null
+    return (
+      <div style={{
+        marginTop: 10,
+        borderRadius: 8,
+        border: '1px solid #f59e0b',
+        background: '#fffbeb',
+        overflow: 'hidden',
+      }}>
+        {/* Header */}
+        <div
+          onClick={() => setShowOutliers(v => !v)}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '8px 14px', cursor: 'pointer',
+            background: '#fef3c7',
+          }}
+        >
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#92400e', display: 'flex', alignItems: 'center', gap: 6 }}>
+            ⚠️ {outliers.length} daerah dikecualikan dari grafik
+            <span style={{ fontWeight: 400, color: '#b45309' }}>
+              (realisasi &gt; {OUTLIER_THRESHOLD.toFixed(0)}% — kemungkinan anomali data)
+            </span>
+          </span>
+          <span style={{ fontSize: 12, color: '#92400e', fontWeight: 700 }}>
+            {showOutliers ? '▲ Sembunyikan' : '▼ Lihat daftar'}
+          </span>
+        </div>
+
+        {/* Daftar — collapsible */}
+        {showOutliers && (
+          <div style={{ padding: '10px 14px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {outliers
+              .sort((a, b) => b[metric] - a[metric])
+              .map((r, i) => (
+                <span key={i} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '4px 10px', borderRadius: 20,
+                  background: '#fde68a', border: '1px solid #f59e0b',
+                  fontSize: 11, fontWeight: 600, color: '#78350f',
+                }}>
+                  {r.daerah}
+                  <span style={{
+                    background: '#dc2626', color: '#fff',
+                    borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 800,
+                  }}>
+                    {r[metric].toFixed(2)}%
+                  </span>
+                </span>
+              ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <>
       {/* ══ Tampilan normal ══ */}
@@ -268,6 +334,9 @@ export default function ComparisonBarChart({ data, metric, rataRata, title, subt
           </div>
           <ChartContent {...sharedProps} chartHeight={500} />
         </div>
+
+        {/* Info outlier — di luar area screenshot */}
+        <OutlierBox />
       </div>
 
       {/* ══ Fullscreen modal ══ */}
@@ -292,6 +361,13 @@ export default function ComparisonBarChart({ data, metric, rataRata, title, subt
               </div>
               <Buttons inModal />
             </div>
+
+            {/* Info outlier di fullscreen */}
+            {outliers.length > 0 && (
+              <div style={{ padding: '6px 20px', borderBottom: '1px solid #fde68a', background: '#fffbeb', flexShrink: 0 }}>
+                <OutlierBox />
+              </div>
+            )}
 
             {/* Konten fullscreen — flex fill, tidak scroll */}
             <div style={{ flex: 1, padding: '12px 20px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
