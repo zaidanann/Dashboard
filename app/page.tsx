@@ -266,14 +266,14 @@ export default function DashboardPage() {
             {JENIS.map(jenis => {
               const rows = byJenis[jenis] as LRARow[]
               if (!rows.length) return null
+              const k = kategori[jenis]
               return (
                 <section key={jenis} className="section">
                   <h2 className="section-title">{JENIS_ICON[jenis]} {jenis.toUpperCase()}</h2>
 
                   <h3 className="subsection-title">Persentase Realisasi Pendapatan APBD {jenis}</h3>
                   <ComparisonBarChart
-                    data={rows}
-                    metric="persenPendapatan"
+                    data={rows} metric="persenPendapatan" rataRata={k.rataRataPendapatan}
                     title="PERSENTASE REALISASI PENDAPATAN"
                     subtitle={`APBD ${jenis.toUpperCase()} SE-INDONESIA TA 2026`}
                     kategori={jenis}
@@ -291,8 +291,7 @@ export default function DashboardPage() {
 
                   <h3 className="subsection-title mt-8">Persentase Realisasi Belanja APBD {jenis}</h3>
                   <ComparisonBarChart
-                    data={rows}
-                    metric="persenBelanja"
+                    data={rows} metric="persenBelanja" rataRata={k.rataRataBelanja}
                     title="PERSENTASE REALISASI BELANJA"
                     subtitle={`APBD ${jenis.toUpperCase()} SE-INDONESIA TA 2026`}
                     kategori={jenis}
